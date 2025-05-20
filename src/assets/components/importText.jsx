@@ -4,30 +4,39 @@ import TextareaAutosize from "@mui/material/TextareaAutosize";
 import ArrowForward from "@mui/icons-material/ArrowForward";
 import SentimentCard from "./sentimentCard";
 import { sendMessage as sendMessageApi } from "../api/importTextApi";
+import LinearProgress from '@mui/material/LinearProgress';
+
 
 function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
   const textareaRef = useRef(null);
   const dataRef = useRef({ text: "", sentiment: "" });
   const [, setTick] = useState(0);
+  const [loading, setLoading] = useState(false);
+
 
   const forceRender = () => setTick((tick) => tick + 1);
 
   const handleSend = async () => {
     const text = textareaRef.current?.value.trim();
     if (!text) return;
-
+  
     console.log("Sending message:", text);
-
+    setLoading(true); // Start loading
+  
     try {
-      const result = await sendMessageApi(text); // ✅ passing the text directly
+      const result = await sendMessageApi(text);
       dataRef.current = {
+        text,
         sentiment: result.sentiment_lvl,
       };
       forceRender();
     } catch (error) {
       console.error("Error in handleSend:", error);
+    } finally {
+      setLoading(false); // Stop loading
     }
   };
+  
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -63,6 +72,7 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
             id="user-text"
             name="userText"
             ref={textareaRef}
+            disabled={loading}
             onKeyDown={handleKeyDown}
             minRows={1}
             placeholder="Enter your text"
@@ -80,6 +90,7 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
 
           <button
             onClick={handleSend}
+            isabled={loading}
             style={{
               marginLeft: "1rem",
               backgroundColor: "transparent",
@@ -96,6 +107,8 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
           </button>
         </div>
       </div>
+      {loading && (<LinearProgress sx={{ width: "100%", maxWidth: "510px", mt: 2 }} />)}
+
 
       {sentiment && <SentimentCard sentiment={sentiment} text={text} />}
     </div>

@@ -4,11 +4,25 @@ import Header from "./header";
 import { Typography, Box, Chip, IconButton, Button } from "@mui/material";
 import Close from "@mui/icons-material/CloseOutlined";
 import { sendCSVFile } from "../api/importCSVApi";
+import { PieChart, pieArcLabelClasses } from '@mui/x-charts/PieChart';
+import { BarChart } from '@mui/x-charts/BarChart';
+import LinearProgress from '@mui/material/LinearProgress';
+
 
 function ImportCSV({ ai, setAi, selectedMode, setSelectedMode }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [downloadData, setDownloadData] = useState(null);
+  const [chartData, setChartData] = useState({ Positive: 0, Neutral: 0, Negative: 0 });
+  const [loading, setLoading] = useState(false);
   const uploadRef = useRef();
+
+
+  
+  const pieData = [
+    { id: 0, value: chartData.Positive, label: "Positive" },
+    { id: 1, value: chartData.Neutral, label: "Neutral" },
+    { id: 2, value: chartData.Negative, label: "Negative" },
+  ];
 
   const handleFiles = (files) => {
     setDownloadData(null); // Reset download data
@@ -23,13 +37,23 @@ function ImportCSV({ ai, setAi, selectedMode, setSelectedMode }) {
 
   const handleSubmit = async () => {
     if (selectedFiles.length === 0) return;
-
+    setLoading(true)
     try {
       const res = await sendCSVFile(selectedFiles[0]);
       console.log("📥 Backend Response:", res);
+
       setDownloadData(res);
+       // Store sentiment counts from response for chart usage
+      setChartData({
+        Positive: res.Positive || 0,
+        Neutral: res.Neutral || 0,
+        Negative: res.Negative || 0,
+      });
+
     } catch (err) {
       console.error("🚫 Upload failed:", err);
+    }finally {
+      setLoading(false); // Stop loading regardless of success/failure
     }
   };
 
@@ -76,13 +100,74 @@ function ImportCSV({ ai, setAi, selectedMode, setSelectedMode }) {
             </Button>
           </Box>
 
+          {loading && <LinearProgress sx={{ mt: 2, width: '100%' }} />}
+
           {downloadData && (
             <Box sx={{ mt: 2 }}>
               <Button variant="outlined" onClick={triggerDownload}>
                 Download Output CSV
               </Button>
+
+              <Box sx={{ display:"flex",flexDirection:"column",mt:4,gap:"100px" }}>
+                <h3>Data From the Predicted Sentiment</h3>
+                    <PieChart
+                      series={[{ data: pieData, arcLabel: (item) => item.label }]}
+                      sx={{
+                        [`& .${pieArcLabelClasses.root}`]: {
+                          fill: "white",
+                          
+                          fontWeight: "bold",
+                        },
+                        "& .MuiChartsLabel-root":{color:"white"}
+                      }}
+                      width={300}
+                      height={300}
+                    />
+                    
+                    <BarChart
+                      xAxis={[
+                        {
+                          data: ['Positive', 'Neutral', 'Negative'],
+                          label: 'Sentiment',
+                          tickLabelStyle: { fill: 'white' },
+                          labelStyle: { fill: 'white' },
+                        }
+                      ]}
+                      yAxis={[
+                        {
+                          label: 'Count',
+                          tickLabelStyle: { fill: 'white' },
+                          labelStyle: { fill: 'white' },
+                        }
+                      ]}
+                      series={[
+                        {
+                          label: 'Total Data',
+                          data: [
+                            chartData.Positive,
+                            chartData.Neutral,
+                            chartData.Negative,
+                          ],
+                        }
+                      ]}
+                      height={300}
+                      barLabel="value"
+                      sx={{
+                        
+                        "& .MuiChartsAxis-line": { stroke: "white"},
+                        "& .MuiChartsLegend-root": { color: "white" },
+
+                        "& .MuiBarElement-root text": { fill: "white" },
+                        "& .MuiChartsAxis-tickLabel": { fill: "white" },
+                      }}
+                    />
+
+
+              </Box>
+              
             </Box>
           )}
+          
         </Box>
       )}
     </div>
