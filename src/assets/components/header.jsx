@@ -1,4 +1,6 @@
 import React from "react";
+import { changeModel } from "../api/changeModelApi";
+
 import {
   FormControl,
   InputLabel,
@@ -14,8 +16,15 @@ import { useNavigate } from "react-router-dom";
 function Header({ ai, setAi, selectedMode, setSelectedMode }) {
   const navigate = useNavigate();
 
-  const handleChange = (event) => {
-    setAi(event.target.value);
+  const handleChange = async (event) => {
+    const selectedModel = event.target.value;
+    try {
+      const res = await changeModel(selectedModel.toLowerCase());
+      console.log("Model changed to:", res.modelName);
+      setAi(selectedModel);
+    } catch (error) {
+      console.error("Error switching model:", error);
+    }
   };
 
   
@@ -60,10 +69,8 @@ function Header({ ai, setAi, selectedMode, setSelectedMode }) {
           value={ai}
           onChange={handleChange}
         >
-          <MenuItem value=""><em>None</em></MenuItem>
-          <MenuItem value="GPT-4">GPT-4</MenuItem>
-          <MenuItem value="Claude">Claude</MenuItem>
-          <MenuItem value="Gemini">Gemini</MenuItem>
+          <MenuItem value={"roberta"}><em>RoBERTa</em></MenuItem>
+          <MenuItem value={"lstm"}>LSTM</MenuItem>
         </Select>
       </FormControl>
 

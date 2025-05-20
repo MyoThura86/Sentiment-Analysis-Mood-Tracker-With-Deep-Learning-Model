@@ -12,12 +12,20 @@ import DescriptionIcon from "@mui/icons-material/Description";
 import EditNote from "@mui/icons-material/EditNote";
 import Extension from "@mui/icons-material/Extension";
 import { useNavigate } from 'react-router-dom';
+import { changeModel } from "../api/changeModelApi";
 
 function Hero({ ai, setAi, selectedMode, setSelectedMode }) {
   const navigate = useNavigate();
 
-  const handleChange = (event) => {
-    setAi(event.target.value);
+  const handleChange = async (event) => {
+    const selectedModel = event.target.value;
+    try {
+      const res = await changeModel(selectedModel);
+      console.log("Model changed:", res.modelName);
+      setAi(selectedModel);
+    } catch (err) {
+      console.error("Error changing model:", err);
+    }
   };
 
   return (
@@ -73,12 +81,8 @@ function Hero({ ai, setAi, selectedMode, setSelectedMode }) {
             value={ai}
             onChange={handleChange}
           >
-            <MenuItem value="">
-              <em>None</em>
-            </MenuItem>
-            <MenuItem value={"GPT-4"}>GPT-4</MenuItem>
-            <MenuItem value={"Claude"}>Claude</MenuItem>
-            <MenuItem value={"Gemini"}>Gemini</MenuItem>
+            <MenuItem value={"roberta"}>RoBERTa</MenuItem>
+            <MenuItem value={"lstm"}>LSTM</MenuItem>
           </Select>
         </FormControl>
       </div>

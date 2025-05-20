@@ -8,7 +8,7 @@ function UseExtension({ai, setAi, selectedMode, setSelectedMode}){
 
     <div>
       <Header ai={ai} setAi={setAi} selectedMode={selectedMode} setSelectedMode={setSelectedMode} />
-      <h1>USe Extension</h1>
+      <h1>Use Extension</h1>
       <p>Selected Mode: {selectedMode}</p>
     </div>
 

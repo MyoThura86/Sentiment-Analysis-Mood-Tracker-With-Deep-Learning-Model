@@ -67,7 +67,7 @@ function ImportCSV({ ai, setAi, selectedMode, setSelectedMode }) {
 
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = downloadData.filename || "output.csv";
+  link.download = downloadData.download.filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
