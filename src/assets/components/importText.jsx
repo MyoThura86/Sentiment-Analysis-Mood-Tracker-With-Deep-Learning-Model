@@ -17,13 +17,11 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
     if (!text) return;
 
     console.log("Sending message:", text);
-    textareaRef.current.value = ""; // Clear input
 
     try {
       const result = await sendMessageApi(text); // ✅ passing the text directly
       dataRef.current = {
-        text: result.text,
-        sentiment: result.sentiment,
+        sentiment: result.sentiment_lvl,
       };
       forceRender();
     } catch (error) {
