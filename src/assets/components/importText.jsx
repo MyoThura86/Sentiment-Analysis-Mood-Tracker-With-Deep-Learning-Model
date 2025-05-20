@@ -3,34 +3,38 @@ import Header from "./header";
 import TextareaAutosize from "@mui/material/TextareaAutosize";
 import ArrowForward from "@mui/icons-material/ArrowForward";
 import SentimentCard from "./sentimentCard";
+import { sendMessage as sendMessageApi } from "../api/importTextApi";
 
 function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
   const textareaRef = useRef(null);
-  const dataRef = useRef({ text: "", sentiment: "" }); // Dictionary to hold message & sentiment
-  const [, setTick] = useState(0); // Force re-render
+  const dataRef = useRef({ text: "", sentiment: "" });
+  const [, setTick] = useState(0);
 
-  const forceRender = () => setTick((t) => t + 1);
+  const forceRender = () => setTick((tick) => tick + 1);
 
-  const sendMessage = () => {
+  const handleSend = async () => {
     const text = textareaRef.current?.value.trim();
-    if (text) {
-      console.log("Sending message:", text);
-      textareaRef.current.value = ""; // Clear textarea
+    if (!text) return;
 
-      // Store text and sentiment (use your own logic to get sentiment)
+    console.log("Sending message:", text);
+    textareaRef.current.value = ""; // Clear input
+
+    try {
+      const result = await sendMessageApi(text); // ✅ passing the text directly
       dataRef.current = {
-        text,
-        sentiment: "Positive", // Replace with actual sentiment logic
+        text: result.text,
+        sentiment: result.sentiment,
       };
-
-      forceRender(); // Rerender to show SentimentCard
+      forceRender();
+    } catch (error) {
+      console.error("Error in handleSend:", error);
     }
   };
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSend();
     }
   };
 
@@ -58,6 +62,8 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
           }}
         >
           <TextareaAutosize
+            id="user-text"
+            name="userText"
             ref={textareaRef}
             onKeyDown={handleKeyDown}
             minRows={1}
@@ -75,14 +81,13 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
           />
 
           <button
-            onClick={sendMessage}
+            onClick={handleSend}
             style={{
               marginLeft: "1rem",
               backgroundColor: "transparent",
               padding: "0.75rem",
               borderRadius: "9999px",
               display: "flex",
-              
               justifyContent: "center",
               border: "none",
               cursor: "pointer",
@@ -94,7 +99,6 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
         </div>
       </div>
 
-      {/* Only show SentimentCard if sentiment is set */}
       {sentiment && <SentimentCard sentiment={sentiment} text={text} />}
     </div>
   );
