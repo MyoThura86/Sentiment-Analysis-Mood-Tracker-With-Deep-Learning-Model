@@ -73,12 +73,13 @@ function Hero({ ai, setAi, selectedMode, setSelectedMode }) {
             "& .MuiInput-underline:after": { borderBottom: "2px solid white" },
           }}
         >
-          <InputLabel id="ai-select-label">AI</InputLabel>
+          
           <Select
             sx={{ "& .MuiSelect-icon": { color: "white" } }}
             labelId="ai-select-label"
             id="ai-select"
             value={ai}
+            defaultValue={"roberta"}
             onChange={handleChange}
           >
             <MenuItem value={"roberta"}>RoBERTa</MenuItem>
@@ -173,9 +174,7 @@ function Hero({ ai, setAi, selectedMode, setSelectedMode }) {
         </Button>
       </div>
 
-      <Typography sx={{ color: "white", mt: 2 }}>
-        Selected Mode: {selectedMode || "None"}
-      </Typography>
+      
     </div>
   );
 }
