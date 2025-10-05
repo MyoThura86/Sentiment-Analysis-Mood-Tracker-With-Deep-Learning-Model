@@ -1,0 +1,280 @@
+{
+  "categories": {
+    "emotional_regulation": {
+      "name": "Emotional Regulation",
+      "description": "Strategies to manage and process emotions effectively",
+      "strategies": [
+        {
+          "id": "deep_breathing",
+          "name": "Deep Breathing Exercise",
+          "description": "Take 5 deep breaths, inhaling for 4 counts, holding for 4, and exhaling for 6.",
+          "instructions": "1. Find a comfortable position\n2. Place one hand on chest, one on belly\n3. Breathe in slowly through nose for 4 counts\n4. Hold breath for 4 counts\n5. Exhale through mouth for 6 counts\n6. Repeat 5 times",
+          "duration_minutes": 3,
+          "evidence_level": "high",
+          "triggers": ["anxiety", "stress", "overwhelm"],
+          "sentiments": ["Negative"],
+          "effectiveness_score": 8.5
+        },
+        {
+          "id": "grounding_5_4_3_2_1",
+          "name": "5-4-3-2-1 Grounding Technique",
+          "description": "Focus on your senses to ground yourself in the present moment.",
+          "instructions": "Identify:\n- 5 things you can see\n- 4 things you can touch\n- 3 things you can hear\n- 2 things you can smell\n- 1 thing you can taste",
+          "duration_minutes": 5,
+          "evidence_level": "high",
+          "triggers": ["panic", "dissociation", "anxiety"],
+          "sentiments": ["Negative"],
+          "effectiveness_score": 9.0
+        },
+        {
+          "id": "emotional_labeling",
+          "name": "Emotion Labeling",
+          "description": "Name and acknowledge your emotions to reduce their intensity.",
+          "instructions": "1. Pause and notice what you're feeling\n2. Name the emotion specifically (frustrated, disappointed, worried)\n3. Rate the intensity 1-10\n4. Accept the emotion without judgment\n5. Ask: 'What does this emotion need right now?'",
+          "duration_minutes": 2,
+          "evidence_level": "high",
+          "triggers": ["emotional_overwhelm", "confusion"],
+          "sentiments": ["Negative", "Neutral"],
+          "effectiveness_score": 8.0
+        }
+      ]
+    },
+    "mindfulness": {
+      "name": "Mindfulness & Meditation",
+      "description": "Present-moment awareness and meditation practices",
+      "strategies": [
+        {
+          "id": "mindful_observation",
+          "name": "Mindful Observation",
+          "description": "Observe your thoughts and feelings without judgment.",
+          "instructions": "1. Sit comfortably and close your eyes\n2. Notice thoughts as they arise\n3. Label them as 'thinking' without judgment\n4. Return attention to your breath\n5. Continue for 5-10 minutes",
+          "duration_minutes": 10,
+          "evidence_level": "high",
+          "triggers": ["rumination", "racing_thoughts"],
+          "sentiments": ["Negative", "Neutral"],
+          "effectiveness_score": 8.7
+        },
+        {
+          "id": "body_scan",
+          "name": "Progressive Body Scan",
+          "description": "Systematically relax each part of your body.",
+          "instructions": "1. Lie down comfortably\n2. Start with your toes, notice any tension\n3. Consciously relax each body part\n4. Move up through legs, torso, arms, to head\n5. End with full-body awareness",
+          "duration_minutes": 15,
+          "evidence_level": "high",
+          "triggers": ["physical_tension", "insomnia", "stress"],
+          "sentiments": ["Negative"],
+          "effectiveness_score": 8.3
+        },
+        {
+          "id": "loving_kindness",
+          "name": "Loving-Kindness Meditation",
+          "description": "Cultivate compassion for yourself and others.",
+          "instructions": "1. Start with yourself: 'May I be happy, may I be peaceful'\n2. Extend to loved ones: 'May you be happy, may you be peaceful'\n3. Include neutral people\n4. Include difficult people\n5. Extend to all beings",
+          "duration_minutes": 10,
+          "evidence_level": "medium",
+          "triggers": ["self_criticism", "anger", "loneliness"],
+          "sentiments": ["Negative"],
+          "effectiveness_score": 7.8
+        }
+      ]
+    },
+    "cognitive_behavioral": {
+      "name": "Cognitive Behavioral Techniques",
+      "description": "Challenge and reframe negative thought patterns",
+      "strategies": [
+        {
+          "id": "thought_challenging",
+          "name": "Thought Record & Challenge",
+          "description": "Identify and challenge negative automatic thoughts.",
+          "instructions": "1. Write down the negative thought\n2. Rate how much you believe it (0-100%)\n3. Identify the thinking error (catastrophizing, all-or-nothing, etc.)\n4. Find evidence for and against the thought\n5. Create a more balanced thought\n6. Re-rate your belief in the original thought",
+          "duration_minutes": 10,
+          "evidence_level": "high",
+          "triggers": ["negative_thoughts", "self_doubt", "catastrophizing"],
+          "sentiments": ["Negative"],
+          "effectiveness_score": 9.2
+        },
+        {
+          "id": "behavioral_activation",
+          "name": "Behavioral Activation",
+          "description": "Engage in meaningful activities to improve mood.",
+          "instructions": "1. List activities that usually bring you joy or satisfaction\n2. Rate each activity's potential mood impact (1-10)\n3. Choose one small, manageable activity\n4. Schedule it for today\n5. Do the activity mindfully\n6. Notice any mood changes",
+          "duration_minutes": 30,
+          "evidence_level": "high",
+          "triggers": ["depression", "apathy", "isolation"],
+          "sentiments": ["Negative"],
+          "effectiveness_score": 8.8
+        },
+        {
+          "id": "problem_solving",
+          "name": "Structured Problem Solving",
+          "description": "Break down problems into manageable steps.",
+          "instructions": "1. Define the problem clearly\n2. Brainstorm all possible solutions (don't judge yet)\n3. Evaluate pros and cons of each solution\n4. Choose the best solution\n5. Make an action plan with specific steps\n6. Implement and evaluate results",
+          "duration_minutes": 20,
+          "evidence_level": "high",
+          "triggers": ["overwhelm", "decision_paralysis", "complex_problems"],
+          "sentiments": ["Negative", "Neutral"],
+          "effectiveness_score": 8.5
+        }
+      ]
+    },
+    "self_care": {
+      "name": "Self-Care & Wellness",
+      "description": "Physical and emotional self-care practices",
+      "strategies": [
+        {
+          "id": "gentle_movement",
+          "name": "Gentle Movement",
+          "description": "Light physical activity to boost mood and energy.",
+          "instructions": "Choose one:\n- 5-minute walk outside\n- Gentle stretching\n- Dancing to 2 favorite songs\n- Yoga poses\n- Walking up and down stairs\nFocus on how movement feels in your body.",
+          "duration_minutes": 10,
+          "evidence_level": "high",
+          "triggers": ["low_energy", "mood_dip", "physical_tension"],
+          "sentiments": ["Negative", "Neutral"],
+          "effectiveness_score": 8.0
+        },
+        {
+          "id": "self_compassion_break",
+          "name": "Self-Compassion Break",
+          "description": "Treat yourself with the kindness you'd show a good friend.",
+          "instructions": "1. Acknowledge: 'This is a moment of suffering'\n2. Remember: 'Suffering is part of the human experience'\n3. Place hand on heart and say: 'May I be kind to myself'\n4. Ask: 'What do I need right now?'\n5. Give yourself what you need (rest, comfort, understanding)",
+          "duration_minutes": 5,
+          "evidence_level": "high",
+          "triggers": ["self_criticism", "shame", "failure"],
+          "sentiments": ["Negative"],
+          "effectiveness_score": 8.7
+        },
+        {
+          "id": "sensory_comfort",
+          "name": "Sensory Comfort Kit",
+          "description": "Use your senses to create comfort and calm.",
+          "instructions": "Create a comfort experience using:\n- Sight: Look at photos of loved ones or nature\n- Sound: Play calming music or nature sounds\n- Touch: Hold a soft blanket or pet\n- Smell: Light a candle or use essential oils\n- Taste: Sip herbal tea or eat something nourishing",
+          "duration_minutes": 15,
+          "evidence_level": "medium",
+          "triggers": ["emotional_distress", "loneliness", "overwhelm"],
+          "sentiments": ["Negative"],
+          "effectiveness_score": 7.5
+        }
+      ]
+    },
+    "social_connection": {
+      "name": "Social Connection & Support",
+      "description": "Building and maintaining supportive relationships",
+      "strategies": [
+        {
+          "id": "reach_out",
+          "name": "Reach Out to Someone",
+          "description": "Connect with a supportive person in your life.",
+          "instructions": "1. Think of someone who cares about you\n2. Choose how to connect (text, call, video, in-person)\n3. Be honest about how you're feeling\n4. Ask for what you need (listening ear, advice, distraction)\n5. Don't worry about being a burden - people who care want to help",
+          "duration_minutes": 15,
+          "evidence_level": "high",
+          "triggers": ["isolation", "loneliness", "overwhelm"],
+          "sentiments": ["Negative"],
+          "effectiveness_score": 8.3
+        },
+        {
+          "id": "gratitude_sharing",
+          "name": "Share Gratitude",
+          "description": "Express appreciation to someone who matters to you.",
+          "instructions": "1. Think of someone who has positively impacted your life\n2. Write or tell them specifically what they did\n3. Explain how it made you feel\n4. Thank them genuinely\n5. Notice how expressing gratitude affects your own mood",
+          "duration_minutes": 10,
+          "evidence_level": "high",
+          "triggers": ["negativity", "relationship_issues"],
+          "sentiments": ["Negative", "Neutral"],
+          "effectiveness_score": 8.0
+        },
+        {
+          "id": "help_others",
+          "name": "Small Act of Kindness",
+          "description": "Do something kind for another person.",
+          "instructions": "Choose a small act of kindness:\n- Send an encouraging text\n- Compliment someone genuinely\n- Help with a small task\n- Listen to someone who needs to talk\n- Donate to a cause you care about\nNotice how helping others affects your mood.",
+          "duration_minutes": 15,
+          "evidence_level": "medium",
+          "triggers": ["purposelessness", "self_focus", "depression"],
+          "sentiments": ["Negative", "Neutral"],
+          "effectiveness_score": 7.8
+        }
+      ]
+    },
+    "positive_psychology": {
+      "name": "Positive Psychology",
+      "description": "Strategies to build resilience and positive emotions",
+      "strategies": [
+        {
+          "id": "three_good_things",
+          "name": "Three Good Things",
+          "description": "Reflect on positive aspects of your day.",
+          "instructions": "1. Write down three things that went well today\n2. For each, explain why you think it went well\n3. Notice your role in making it happen\n4. Feel grateful for these moments\n5. Keep this list somewhere you can revisit it",
+          "duration_minutes": 10,
+          "evidence_level": "high",
+          "triggers": ["negativity_bias", "depression", "low_mood"],
+          "sentiments": ["Negative", "Neutral"],
+          "effectiveness_score": 8.2
+        },
+        {
+          "id": "strengths_focus",
+          "name": "Character Strengths Practice",
+          "description": "Identify and use your personal strengths.",
+          "instructions": "1. Identify one of your character strengths (kindness, perseverance, creativity, etc.)\n2. Think of a time you used this strength successfully\n3. Plan how to use this strength today\n4. Use it in a new way\n5. Reflect on how it felt and its impact",
+          "duration_minutes": 15,
+          "evidence_level": "medium",
+          "triggers": ["low_self_esteem", "self_doubt"],
+          "sentiments": ["Negative", "Neutral"],
+          "effectiveness_score": 7.5
+        },
+        {
+          "id": "future_self_visualization",
+          "name": "Best Possible Self",
+          "description": "Visualize your ideal future self.",
+          "instructions": "1. Imagine yourself one year from now at your best\n2. Picture specific details: relationships, work, health, hobbies\n3. Write about this vision for 10 minutes\n4. Identify one small step you can take today toward this vision\n5. Take that step",
+          "duration_minutes": 20,
+          "evidence_level": "medium",
+          "triggers": ["hopelessness", "lack_of_direction"],
+          "sentiments": ["Negative"],
+          "effectiveness_score": 7.7
+        }
+      ]
+    }
+  },
+  "quick_strategies": {
+    "immediate_relief": [
+      {
+        "name": "STOP Technique",
+        "description": "Stop, Take a breath, Observe, Proceed mindfully",
+        "duration_minutes": 1,
+        "effectiveness_score": 7.0
+      },
+      {
+        "name": "Cold Water Face Splash",
+        "description": "Splash cold water on your face to activate the dive response",
+        "duration_minutes": 1,
+        "effectiveness_score": 7.5
+      },
+      {
+        "name": "Squeeze and Release",
+        "description": "Clench fists tightly for 10 seconds, then release and notice the relaxation",
+        "duration_minutes": 1,
+        "effectiveness_score": 7.2
+      }
+    ],
+    "energy_boosters": [
+      {
+        "name": "Power Pose",
+        "description": "Stand in a confident pose for 2 minutes",
+        "duration_minutes": 2,
+        "effectiveness_score": 6.8
+      },
+      {
+        "name": "Upbeat Music",
+        "description": "Listen to an energizing song",
+        "duration_minutes": 4,
+        "effectiveness_score": 7.8
+      },
+      {
+        "name": "Drink Water",
+        "description": "Drink a full glass of water mindfully",
+        "duration_minutes": 2,
+        "effectiveness_score": 6.5
+      }
+    ]
+  }
+}
