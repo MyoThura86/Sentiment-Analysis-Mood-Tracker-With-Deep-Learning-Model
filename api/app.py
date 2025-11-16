@@ -1,5 +1,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_caching import Cache
 import torch
 from transformers import RobertaTokenizer, RobertaForSequenceClassification
 import tensorflow as tf
@@ -8,52 +11,94 @@ import sys
 import os
 import pandas as pd
 import io
+import requests
+import logging
+import redis
 from simple_model import predict_with_simple_model
 from database import MoodTrackingDB
 from user_manager import UserManager
 from translations import translate_test_data, get_recommendations
+from jwt_utils import create_token, verify_token, require_auth, extract_user_id_from_request
+from dotenv import load_dotenv
+from config_manager import get_config
+
+# Load environment variables
+load_dotenv()
+
+# Get configuration based on environment
+config = get_config()
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, config.LOG_LEVEL),
+    format=config.LOG_FORMAT,
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config.from_object(config)
 
-# Allow both development and production origins
+# Configure CORS properly
+# Get allowed origins from environment or use defaults
+frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 allowed_origins = [
     'http://localhost:3000',
     'http://localhost:5173',
     'http://127.0.0.1:3000',
     'http://127.0.0.1:5173',
     'http://localhost:5174',
-    # Add your production frontend URL here after deployment
-    # 'https://your-app.vercel.app'
 ]
 
+# Add production URL if specified
+if frontend_url and frontend_url not in allowed_origins:
+    allowed_origins.append(frontend_url)
+
+# Configure CORS - removed 'Access-Control-Allow-Origin' from allow_headers (it's a response header, not request)
 CORS(app,
-     origins=allowed_origins,
+     resources={r"/api/*": {"origins": allowed_origins}},
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-     allow_headers=['Content-Type', 'Authorization', 'Access-Control-Allow-Origin', 'User-ID', 'X-Requested-With'],
+     allow_headers=['Content-Type', 'Authorization', 'User-ID', 'X-Requested-With'],
      supports_credentials=True,
      expose_headers=['Content-Type', 'Authorization'])
 
-# Add additional CORS handler for preflight requests
-@app.before_request
-def handle_preflight():
-    if request.method == "OPTIONS":
-        response = jsonify()
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,User-ID,X-Requested-With')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response
+# ============================================
+# REDIS & CACHING SETUP (Phase 4)
+# ============================================
 
-# Health check endpoint for deployment platforms
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    return jsonify({
-        "status": "healthy",
-        "models_loaded": {
-            "roberta": roberta_model is not None,
-            "lstm": lstm_model is not None
-        }
-    }), 200
+# Initialize Redis client
+redis_client = None
+try:
+    redis_client = redis.from_url(config.REDIS_URL, decode_responses=True)
+    redis_client.ping()
+    logger.info(f"✓ Redis connected: {config.REDIS_URL}")
+except (redis.ConnectionError, redis.RedisError) as e:
+    logger.warning(f"⚠ Redis connection failed: {e}. Using in-memory storage.")
+    redis_client = None
+
+# Configure rate limiting with Redis (fallback to memory if Redis unavailable)
+storage_uri = config.RATE_LIMIT_STORAGE if redis_client else "memory://"
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["1000 per day", "100 per hour"],
+    storage_uri=storage_uri,
+    strategy="fixed-window"
+)
+logger.info(f"✓ Rate limiting configured: {storage_uri}")
+
+# Configure caching
+cache_config = {
+    'CACHE_TYPE': config.CACHE_TYPE if redis_client else 'simple',
+    'CACHE_DEFAULT_TIMEOUT': config.CACHE_DEFAULT_TIMEOUT,
+    'CACHE_KEY_PREFIX': config.CACHE_KEY_PREFIX,
+}
+
+if config.CACHE_TYPE == 'redis' and redis_client:
+    cache_config['CACHE_REDIS_URL'] = config.CACHE_REDIS_URL
+
+cache = Cache(app, config=cache_config)
+logger.info(f"✓ Caching configured: {cache_config['CACHE_TYPE']}")
 
 # Global variables for models
 roberta_model = None
@@ -63,6 +108,128 @@ lstm_model = None
 # Initialize database and user manager
 db = MoodTrackingDB()
 user_manager = UserManager()
+
+# ============================================
+# BLUEPRINT REGISTRATION (Phase 3)
+# ============================================
+
+# Import blueprints
+from routes import auth_bp, predictions_bp, journal_bp, tests_bp
+
+# Register blueprints
+logger.info("Registering blueprints...")
+
+# Register all blueprints
+app.register_blueprint(auth_bp)
+app.register_blueprint(predictions_bp)
+app.register_blueprint(journal_bp)
+app.register_blueprint(tests_bp)
+
+# Note: Rate limiting is now handled within individual route files using decorators
+# This avoids KeyError issues with blueprint view_functions dictionary
+
+logger.info("✓ All blueprints registered successfully")
+
+# ============================================
+# REQUEST LOGGING MIDDLEWARE (Phase 3)
+# ============================================
+
+import time
+
+@app.before_request
+def log_request():
+    """Log incoming requests"""
+    request.start_time = time.time()
+    logger.info(f"→ {request.method} {request.path} - {request.remote_addr}")
+
+@app.after_request
+def log_response(response):
+    """Log outgoing responses with duration"""
+    if hasattr(request, 'start_time'):
+        duration = time.time() - request.start_time
+        logger.info(f"← {request.method} {request.path} - {response.status_code} - {duration:.3f}s")
+    return response
+
+# ============================================
+# SWAGGER API DOCUMENTATION (Phase 3)
+# ============================================
+
+from flasgger import Swagger
+
+swagger_config = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": 'apispec',
+            "route": '/apispec.json',
+            "rule_filter": lambda rule: True,
+            "model_filter": lambda tag: True,
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    "swagger_ui": True,
+    "specs_route": "/api/docs",
+    "title": "MoodTracker API",
+    "version": "2.0.0",
+    "description": "Mental health and sentiment analysis API with dual ML models",
+    "termsOfService": "",
+    "contact": {
+        "email": "support@moodtracker.com"
+    }
+}
+
+swagger_template = {
+    "swagger": "2.0",
+    "info": {
+        "title": "MoodTracker API",
+        "description": "Comprehensive mental health tracking and sentiment analysis platform",
+        "version": "2.0.0"
+    },
+    "host": "localhost:5001",
+    "basePath": "/",
+    "schemes": [
+        "http",
+        "https"
+    ],
+    "securityDefinitions": {
+        "Bearer": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header",
+            "description": "JWT Authorization header using the Bearer scheme. Example: 'Bearer {token}'"
+        }
+    },
+    "tags": [
+        {
+            "name": "Authentication",
+            "description": "User authentication and OAuth operations"
+        },
+        {
+            "name": "Predictions",
+            "description": "Sentiment analysis and ML model predictions"
+        },
+        {
+            "name": "Journal",
+            "description": "Mood journal entries and analytics"
+        },
+        {
+            "name": "Tests",
+            "description": "Psychological assessments (PHQ-9, GAD-7, etc.)"
+        },
+        {
+            "name": "Dashboard",
+            "description": "User statistics and insights"
+        }
+    ]
+}
+
+swagger = Swagger(app, config=swagger_config, template=swagger_template)
+
+logger.info("✓ Swagger documentation enabled at /api/docs")
+
+# ============================================
+# MODEL LOADING
+# ============================================
 
 def load_roberta_model():
     """Load the fine-tuned RoBERTa model"""
@@ -78,10 +245,10 @@ def load_roberta_model():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         roberta_model.to(device)
 
-        print("RoBERTa model loaded successfully!")
+        logger.info("RoBERTa model loaded successfully!")
         return True
     except Exception as e:
-        print(f"Error loading RoBERTa model: {e}")
+        logger.error(f"Error loading RoBERTa model: {e}")
         return False
 
 def load_lstm_model():
@@ -90,10 +257,10 @@ def load_lstm_model():
     try:
         model_path = "../mentalbert_lstm_model.keras"
         lstm_model = tf.keras.models.load_model(model_path)
-        print("LSTM model loaded successfully!")
+        logger.info("LSTM model loaded successfully!")
         return True
     except Exception as e:
-        print(f"Error loading LSTM model: {e}")
+        logger.error(f"Error loading LSTM model: {e}")
         return False
 
 def predict_roberta_sentiment(text):
@@ -152,8 +319,28 @@ def predict_lstm_sentiment(text):
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
-    # Check if LSTM model is loaded by checking simple model
+    """
+    Enhanced health check endpoint (Phase 4)
+
+    Checks:
+    - API status
+    - ML models status
+    - Redis connection
+    - Database connection
+    - Cache status
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: Comprehensive health status
+    """
+    import time
+    from datetime import datetime
+
+    start_time = time.time()
+
+    # Check ML models
     lstm_loaded = False
     try:
         from simple_model import model, tokenizer, mentalbert
@@ -161,23 +348,101 @@ def health_check():
     except:
         lstm_loaded = False
 
+    # Check Redis
+    redis_status = "disconnected"
+    redis_latency = None
+    if redis_client:
+        try:
+            redis_start = time.time()
+            redis_client.ping()
+            redis_latency = round((time.time() - redis_start) * 1000, 2)  # ms
+            redis_status = "connected"
+        except Exception as e:
+            redis_status = f"error: {str(e)}"
+
+    # Check Database
+    db_status = "unknown"
+    try:
+        # Try a simple database operation
+        user_stats = db.get_user_stats("health_check_test")
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)[:50]}"
+
+    # Check Cache
+    cache_status = cache_config['CACHE_TYPE']
+
+    # Overall health determination
+    critical_services = [
+        roberta_model is not None or lstm_loaded,  # At least one model loaded
+        db_status == "connected"
+    ]
+
+    overall_status = "healthy" if all(critical_services) else "degraded"
+    if redis_status.startswith("error") or db_status.startswith("error"):
+        overall_status = "degraded"
+
+    response_time = round((time.time() - start_time) * 1000, 2)  # ms
+
     return jsonify({
-        "status": "healthy",
-        "roberta_loaded": roberta_model is not None,
-        "lstm_loaded": lstm_loaded
+        "status": overall_status,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "version": "2.0.0-phase4",
+        "environment": os.getenv('FLASK_ENV', 'development'),
+        "response_time_ms": response_time,
+        "services": {
+            "ml_models": {
+                "roberta": {
+                    "loaded": roberta_model is not None,
+                    "status": "ready" if roberta_model is not None else "not_loaded"
+                },
+                "lstm": {
+                    "loaded": lstm_loaded,
+                    "status": "ready" if lstm_loaded else "not_loaded"
+                }
+            },
+            "redis": {
+                "status": redis_status,
+                "latency_ms": redis_latency,
+                "url": config.REDIS_URL.split('@')[-1] if '@' in config.REDIS_URL else config.REDIS_URL  # Hide password
+            },
+            "database": {
+                "status": db_status,
+                "path": config.DATABASE_PATH
+            },
+            "cache": {
+                "type": cache_status,
+                "configured": True
+            }
+        },
+        "uptime": "available via /api/metrics",  # Future enhancement
+        "details": {
+            "rate_limiting": storage_uri,
+            "blueprints_loaded": len(app.blueprints),
+            "total_routes": len([rule for rule in app.url_map.iter_rules()])
+        }
     })
 
 @app.route('/api/predict/roberta', methods=['POST'])
+@limiter.limit("30 per minute")  # Limit model predictions
 def predict_roberta():
     """Predict sentiment using RoBERTa model"""
+    MAX_TEXT_LENGTH = 5000
+
     try:
         data = request.get_json()
         if not data or 'text' not in data:
             return jsonify({"error": "No text provided"}), 400
 
         text = data['text']
+        if not isinstance(text, str):
+            return jsonify({"error": "Text must be a string"}), 400
+
         if not text.strip():
             return jsonify({"error": "Empty text provided"}), 400
+
+        if len(text) > MAX_TEXT_LENGTH:
+            return jsonify({"error": f"Text too long. Maximum length is {MAX_TEXT_LENGTH} characters"}), 400
 
         result = predict_roberta_sentiment(text)
         return jsonify(result)
@@ -186,16 +451,25 @@ def predict_roberta():
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/predict/lstm', methods=['POST'])
+@limiter.limit("30 per minute")  # Limit model predictions
 def predict_lstm():
     """Predict sentiment using LSTM model"""
+    MAX_TEXT_LENGTH = 5000
+
     try:
         data = request.get_json()
         if not data or 'text' not in data:
             return jsonify({"error": "No text provided"}), 400
 
         text = data['text']
+        if not isinstance(text, str):
+            return jsonify({"error": "Text must be a string"}), 400
+
         if not text.strip():
             return jsonify({"error": "Empty text provided"}), 400
+
+        if len(text) > MAX_TEXT_LENGTH:
+            return jsonify({"error": f"Text too long. Maximum length is {MAX_TEXT_LENGTH} characters"}), 400
 
         result = predict_lstm_sentiment(text)
         return jsonify(result)
@@ -204,16 +478,25 @@ def predict_lstm():
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/predict/both', methods=['POST'])
+@limiter.limit("20 per minute")  # More restrictive for dual model predictions
 def predict_both():
     """Predict sentiment using both models"""
+    MAX_TEXT_LENGTH = 5000
+
     try:
         data = request.get_json()
         if not data or 'text' not in data:
             return jsonify({"error": "No text provided"}), 400
 
         text = data['text']
+        if not isinstance(text, str):
+            return jsonify({"error": "Text must be a string"}), 400
+
         if not text.strip():
             return jsonify({"error": "Empty text provided"}), 400
+
+        if len(text) > MAX_TEXT_LENGTH:
+            return jsonify({"error": f"Text too long. Maximum length is {MAX_TEXT_LENGTH} characters"}), 400
 
         roberta_result = predict_roberta_sentiment(text)
         lstm_result = predict_lstm_sentiment(text)
@@ -228,8 +511,14 @@ def predict_both():
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/analyze/csv', methods=['POST'])
+@limiter.limit("5 per hour")  # Very restrictive for CSV processing
 def analyze_csv():
     """Analyze sentiment for a CSV file"""
+    # Configuration limits
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    MAX_ROWS = 1000
+    MAX_TEXT_LENGTH = 5000
+
     try:
         # Check if file is present
         if 'file' not in request.files:
@@ -242,9 +531,16 @@ def analyze_csv():
         if not file.filename.lower().endswith('.csv'):
             return jsonify({"error": "File must be a CSV"}), 400
 
-        # Read CSV file
+        # Read and validate file size
         try:
-            csv_content = file.read().decode('utf-8')
+            csv_content = file.read()
+
+            # Check file size
+            if len(csv_content) > MAX_FILE_SIZE:
+                return jsonify({"error": f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB"}), 400
+
+            # Decode and parse CSV
+            csv_content = csv_content.decode('utf-8')
             df = pd.read_csv(io.StringIO(csv_content))
         except Exception as e:
             return jsonify({"error": f"Error reading CSV: {str(e)}"}), 400
@@ -269,11 +565,26 @@ def analyze_csv():
         if len(df) == 0:
             return jsonify({"error": "No valid text data found in CSV"}), 400
 
+        # Check row count
+        if len(df) > MAX_ROWS:
+            return jsonify({"error": f"Too many rows. Maximum is {MAX_ROWS} rows. Your file has {len(df)} rows."}), 400
+
         # Analyze each text entry
         results = []
         for idx, row in df.iterrows():
             text = str(row[text_column]).strip()
             if not text:
+                continue
+
+            # Validate text length
+            if len(text) > MAX_TEXT_LENGTH:
+                results.append({
+                    "row": int(idx + 1),
+                    "text": text[:100] + "...",
+                    "sentiment": "Error",
+                    "confidence": 0.0,
+                    "error": f"Text too long (max {MAX_TEXT_LENGTH} characters)"
+                })
                 continue
 
             try:
@@ -323,6 +634,7 @@ def analyze_csv():
 
 # Authentication endpoints
 @app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
+@limiter.limit("5 per minute")  # Prevent brute force attacks
 def auth_login():
     """Real login endpoint using users_database.json"""
     if request.method == 'OPTIONS':
@@ -341,9 +653,10 @@ def auth_login():
 
         if result['success']:
             user = result['user']
+            token = create_token(user['id'], user['email'])
             return jsonify({
                 "success": True,
-                "token": f"jwt_token_{user['id']}",
+                "token": token,
                 "user": {
                     "id": user['id'],
                     "email": user['email'],
@@ -357,10 +670,11 @@ def auth_login():
             return jsonify({"error": result['error']}), 401
 
     except Exception as e:
-        print(f"Login error: {e}")
+        logger.error(f"Login error: {e}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/auth/register', methods=['POST', 'OPTIONS'])
+@limiter.limit("3 per hour")  # Prevent mass account creation
 def auth_register():
     """Real registration endpoint using users_database.json"""
     if request.method == 'OPTIONS':
@@ -394,9 +708,10 @@ def auth_register():
             # Also create user in mood tracking database
             db.create_user(user['id'], user['email'], f"{user['firstName']} {user['lastName']}")
 
+            token = create_token(user['id'], user['email'])
             return jsonify({
                 "success": True,
-                "token": f"jwt_token_{user['id']}",
+                "token": token,
                 "user": {
                     "id": user['id'],
                     "email": user['email'],
@@ -410,24 +725,56 @@ def auth_register():
             return jsonify({"error": result['error']}), 400
 
     except Exception as e:
-        print(f"Registration error: {e}")
+        logger.error(f"Registration error: {e}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/auth/google', methods=['POST', 'OPTIONS'])
+@limiter.limit("10 per minute")  # OAuth attempts
 def auth_google():
-    """Google OAuth endpoint - creates/retrieves user from database"""
+    """Google OAuth endpoint - verifies credential and creates/retrieves user"""
     if request.method == 'OPTIONS':
         return '', 200
 
     try:
-        data = request.get_json()
-        email = data.get('email', '').strip()
-        given_name = data.get('given_name', '')
-        family_name = data.get('family_name', '')
-        name = data.get('name', f"{given_name} {family_name}").strip()
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as google_requests
 
-        if not email:
-            return jsonify({"error": "Email is required"}), 400
+        data = request.get_json()
+        credential = data.get('credential')
+
+        if not credential:
+            return jsonify({"success": False, "message": "No credential provided"}), 400
+
+        # Verify the Google credential
+        try:
+            google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
+            if not google_client_id:
+                return jsonify({"error": "Google OAuth not configured on server"}), 500
+
+            idinfo = id_token.verify_oauth2_token(
+                credential,
+                google_requests.Request(),
+                google_client_id
+            )
+
+            # Validate idinfo contains required fields
+            if not idinfo or 'email' not in idinfo:
+                return jsonify({"success": False, "message": "Invalid Google token: missing email"}), 400
+
+            email = idinfo.get('email')
+            given_name = idinfo.get('given_name', '')
+            family_name = idinfo.get('family_name', '')
+            name = idinfo.get('name', f"{given_name} {family_name}")
+
+            # Additional validation
+            if not email or '@' not in email:
+                return jsonify({"success": False, "message": "Invalid email from Google"}), 400
+
+        except ValueError as e:
+            return jsonify({"success": False, "message": f"Invalid credential: {str(e)}"}), 400
+        except Exception as e:
+            logger.error(f"Google token verification error: {e}")
+            return jsonify({"success": False, "message": "Failed to verify Google credential"}), 400
 
         # Check if user already exists
         user_result = user_manager.get_user_by_email(email)
@@ -452,9 +799,10 @@ def auth_google():
 
             user = create_result['user']
 
+        token = create_token(user['id'], user['email'])
         return jsonify({
             "success": True,
-            "token": f"jwt_token_{user['id']}",
+            "token": token,
             "user": {
                 "id": user['id'],
                 "email": user['email'],
@@ -465,23 +813,102 @@ def auth_google():
             }
         })
     except Exception as e:
-        print(f"Google OAuth error: {e}")
+        logger.error(f"Google OAuth error: {e}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/auth/github', methods=['POST', 'OPTIONS'])
+@limiter.limit("10 per minute")  # OAuth attempts
 def auth_github():
-    """GitHub OAuth endpoint - creates/retrieves user from database"""
+    """GitHub OAuth endpoint - exchanges code for user info and creates/retrieves user"""
     if request.method == 'OPTIONS':
         return '', 200
 
     try:
         data = request.get_json()
-        email = data.get('email', '').strip()
-        name = data.get('name', '').strip()
-        login = data.get('login', '')  # GitHub username
+        code = data.get('code')
+
+        # If code is provided, exchange it for user info
+        if code:
+            import os
+            client_id = os.environ.get('GITHUB_CLIENT_ID')
+            client_secret = os.environ.get('GITHUB_CLIENT_SECRET')
+
+            if not client_id or not client_secret:
+                return jsonify({"error": "GitHub OAuth not configured on server"}), 500
+
+            # Exchange code for access token
+            token_response = requests.post('https://github.com/login/oauth/access_token',
+                headers={'Accept': 'application/json'},
+                data={
+                    'client_id': client_id,
+                    'client_secret': client_secret,
+                    'code': code
+                },
+                timeout=10)
+
+            # Check for HTTP errors
+            if token_response.status_code != 200:
+                logger.error(f"GitHub token exchange failed with status {token_response.status_code}")
+                return jsonify({"success": False, "message": "Failed to exchange GitHub code for token"}), 400
+
+            token_data = token_response.json()
+
+            # Check for errors in response
+            if 'error' in token_data:
+                logger.error(f"GitHub OAuth error: {token_data.get('error_description', token_data.get('error'))}")
+                return jsonify({"success": False, "message": "GitHub authentication failed"}), 400
+
+            access_token = token_data.get('access_token')
+
+            if not access_token:
+                return jsonify({"success": False, "message": "Failed to get access token from GitHub"}), 400
+
+            # Get user info from GitHub
+            user_response = requests.get('https://api.github.com/user',
+                headers={'Authorization': f'token {access_token}'},
+                timeout=10)
+
+            # Check user API response
+            if user_response.status_code != 200:
+                logger.error(f"GitHub user API failed with status {user_response.status_code}")
+                return jsonify({"success": False, "message": "Failed to get GitHub user info"}), 400
+
+            github_user = user_response.json()
+
+            # Validate response structure
+            if 'id' not in github_user:
+                return jsonify({"success": False, "message": "Invalid GitHub user response"}), 400
+
+            email = github_user.get('email')
+
+            # If email is not public, get primary email
+            if not email:
+                emails_response = requests.get('https://api.github.com/user/emails',
+                    headers={'Authorization': f'token {access_token}'},
+                    timeout=10)
+
+                if emails_response.status_code == 200:
+                    emails = emails_response.json()
+                    if isinstance(emails, list):
+                        for e in emails:
+                            if e.get('primary'):
+                                email = e.get('email')
+                                break
+
+            # Validate email
+            if not email or '@' not in email:
+                return jsonify({"success": False, "message": "Could not retrieve valid email from GitHub"}), 400
+
+            name = github_user.get('name') or github_user.get('login')
+            login = github_user.get('login')
+        else:
+            # Legacy: Direct email/name/login provided
+            email = data.get('email', '').strip()
+            name = data.get('name', '').strip()
+            login = data.get('login', '')
 
         if not email:
-            return jsonify({"error": "Email is required"}), 400
+            return jsonify({"success": False, "message": "Email is required"}), 400
 
         # Check if user already exists
         user_result = user_manager.get_user_by_email(email)
@@ -510,9 +937,10 @@ def auth_github():
 
             user = create_result['user']
 
+        token = create_token(user['id'], user['email'])
         return jsonify({
             "success": True,
-            "token": f"jwt_token_{user['id']}",
+            "token": token,
             "user": {
                 "id": user['id'],
                 "email": user['email'],
@@ -523,8 +951,10 @@ def auth_github():
             }
         })
     except Exception as e:
-        print(f"GitHub OAuth error: {e}")
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
+        import traceback
+        logger.error(f"GitHub OAuth error: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
@@ -615,124 +1045,126 @@ def get_stats():
 
 # Database is now initialized above - no more in-memory storage needed
 
-# Journal endpoints
-@app.route('/api/journal/entries', methods=['GET', 'POST', 'DELETE', 'OPTIONS'])
-def journal_entries():
-    """Handle journal entries - get all entries or create new entry"""
-    if request.method == 'OPTIONS':
-        return '', 200
-
-    # Get user ID from header
-    user_id = request.headers.get('User-ID')
-
-    if not user_id:
-        return jsonify({"error": "User-ID header required"}), 401
-
-    try:
-        if request.method == 'GET':
-            # Get journal entries for user from database
-            entries = db.get_journal_entries(user_id)
-            return jsonify({
-                "success": True,
-                "entries": entries,
-                "total": len(entries)
-            })
-
-        elif request.method == 'POST':
-            # Create new journal entry
-            data = request.get_json()
-            if not data or 'text' not in data:
-                return jsonify({"error": "Text is required"}), 400
-
-            text = data['text']
-            if not text.strip():
-                return jsonify({"error": "Empty text provided"}), 400
-
-            # Analyze sentiment using both models
-            roberta_result = predict_roberta_sentiment(text)
-            lstm_result = predict_lstm_sentiment(text)
-
-            # Use RoBERTa as primary for consistency
-            primary_sentiment = roberta_result.get('sentiment', 'Neutral')
-            primary_confidence = roberta_result.get('confidence', 0.5)
-
-            # Calculate mood score (1-10 scale)
-            scores = roberta_result.get('scores', {})
-            mood_score = (scores.get('positive', 0) * 10) + (scores.get('neutral', 0) * 5.5) + (scores.get('negative', 0) * 2)
-
-            # Store entry in database
-            analysis_data = {
-                "roberta": roberta_result,
-                "lstm": lstm_result
-            }
-
-            entry_id = db.create_journal_entry(
-                user_id=user_id,
-                text=text,
-                sentiment=primary_sentiment,
-                confidence=float(primary_confidence),
-                mood_score=round(float(mood_score), 1),
-                scores=scores,
-                tags=data.get('tags', []),
-                analysis=analysis_data
-            )
-
-            # Get the created entry back from database
-            entries = db.get_journal_entries(user_id, limit=1)
-            new_entry = entries[0] if entries else None
-
-            # Generate AI analysis insights
-            recent_entries = db.get_journal_entries(user_id, limit=10)
-            ai_analysis = generate_ai_insights_for_entry(new_entry, recent_entries)
-
-            return jsonify({
-                "success": True,
-                "entry": new_entry,
-                "message": "Journal entry created successfully",
-                "ai_analysis": ai_analysis
-            })
-
-    except Exception as e:
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
-
-@app.route('/api/journal/entries/<int:entry_id>', methods=['DELETE', 'OPTIONS'])
-def delete_journal_entry(entry_id):
-    """Delete a specific journal entry"""
-    if request.method == 'OPTIONS':
-        return '', 200
-
-    user_id = request.headers.get('User-ID')
-    if not user_id:
-        return jsonify({"error": "User-ID header required"}), 401
-
-    try:
-        # Delete entry from database
-        deleted = db.delete_journal_entry(user_id, entry_id)
-
-        if deleted:
-            return jsonify({
-                "success": True,
-                "message": "Entry deleted successfully"
-            })
-        else:
-            return jsonify({
-                "success": False,
-                "error": "Entry not found or not authorized"
-            }), 404
-    except Exception as e:
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
+# ============================================
+# JOURNAL ENDPOINTS
+# ============================================
+# NOTE: These routes have been migrated to routes/journal.py blueprint
+# Keeping them commented for reference
+#
+# @app.route('/api/journal/entries', methods=['GET', 'POST', 'DELETE', 'OPTIONS'])
+# @require_auth
+# def journal_entries(current_user):
+#     """Handle journal entries - get all entries or create new entry"""
+#     if request.method == 'OPTIONS':
+#         return '', 200
+#
+#     # Get user ID from JWT token
+#     user_id = current_user['user_id']
+#
+#     try:
+#         if request.method == 'GET':
+#             # Get journal entries for user from database
+#             entries = db.get_journal_entries(user_id)
+#             return jsonify({
+#                 "success": True,
+#                 "entries": entries,
+#                 "total": len(entries)
+#             })
+#
+#         elif request.method == 'POST':
+#             # Create new journal entry
+#             data = request.get_json()
+#             if not data or 'text' not in data:
+#                 return jsonify({"error": "Text is required"}), 400
+#
+#             text = data['text']
+#             if not text.strip():
+#                 return jsonify({"error": "Empty text provided"}), 400
+#
+#             # Analyze sentiment using both models
+#             roberta_result = predict_roberta_sentiment(text)
+#             lstm_result = predict_lstm_sentiment(text)
+#
+#             # Use RoBERTa as primary for consistency
+#             primary_sentiment = roberta_result.get('sentiment', 'Neutral')
+#             primary_confidence = roberta_result.get('confidence', 0.5)
+#
+#             # Calculate mood score (1-10 scale)
+#             scores = roberta_result.get('scores', {})
+#             mood_score = (scores.get('positive', 0) * 10) + (scores.get('neutral', 0) * 5.5) + (scores.get('negative', 0) * 2)
+#
+#             # Store entry in database
+#             analysis_data = {
+#                 "roberta": roberta_result,
+#                 "lstm": lstm_result
+#             }
+#
+#             entry_id = db.create_journal_entry(
+#                 user_id=user_id,
+#                 text=text,
+#                 sentiment=primary_sentiment,
+#                 confidence=float(primary_confidence),
+#                 mood_score=round(float(mood_score), 1),
+#                 scores=scores,
+#                 tags=data.get('tags', []),
+#                 analysis=analysis_data
+#             )
+#
+#             # Get the created entry back from database
+#             entries = db.get_journal_entries(user_id, limit=1)
+#             new_entry = entries[0] if entries else None
+#
+#             # Generate AI analysis insights
+#             recent_entries = db.get_journal_entries(user_id, limit=10)
+#             ai_analysis = generate_ai_insights_for_entry(new_entry, recent_entries)
+#
+#             return jsonify({
+#                 "success": True,
+#                 "entry": new_entry,
+#                 "message": "Journal entry created successfully",
+#                 "ai_analysis": ai_analysis
+#             })
+#
+#     except Exception as e:
+#         return jsonify({"error": f"Server error: {str(e)}"}), 500
+#
+# @app.route('/api/journal/entries/<int:entry_id>', methods=['DELETE', 'OPTIONS'])
+# @require_auth
+# def delete_journal_entry(current_user, entry_id):
+#     """Delete a specific journal entry"""
+#     if request.method == 'OPTIONS':
+#         return '', 200
+#
+#     # Get user ID from JWT token
+#     user_id = current_user['user_id']
+#
+#     try:
+#         # Delete entry from database
+#         deleted = db.delete_journal_entry(user_id, entry_id)
+#
+#         if deleted:
+#             return jsonify({
+#                 "success": True,
+#                 "message": "Entry deleted successfully"
+#             })
+#         else:
+#             return jsonify({
+#                 "success": False,
+#                 "error": "Entry not found or not authorized"
+#             }), 404
+#     except Exception as e:
+#         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Notifications endpoints
 @app.route('/api/notifications/insights', methods=['GET', 'OPTIONS'])
-def notifications_insights():
+@require_auth
+def notifications_insights(current_user):
     """Get AI-generated insights and notifications"""
     if request.method == 'OPTIONS':
         return '', 200
 
-    user_id = request.headers.get('User-ID')
-
-    if not user_id:
-        return jsonify({"error": "User-ID header required"}), 401
+    # Get user ID from JWT token
+    user_id = current_user['user_id']
 
     try:
         # Get user's journal entries from database
@@ -766,10 +1198,10 @@ def notifications_insights():
         coping_strategies = generate_coping_strategies_enhanced(sentiment_trend, mood_pattern, recent_entries, test_results)
 
         # Debug logging
-        print(f"🎯 Generated {len(coping_strategies)} coping strategies for user {user_id}")
-        print(f"📊 Test results available: {len(test_results)} results")
+        logger.debug(f"Generated {len(coping_strategies)} coping strategies for user {user_id}")
+        logger.debug(f"Test results available: {len(test_results)} results")
         if coping_strategies:
-            print(f"📋 Strategies: {[s['name'] for s in coping_strategies]}")
+            logger.debug(f"Strategies: {[s['name'] for s in coping_strategies]}")
 
         # Identify patterns
         patterns = identify_patterns(recent_entries)
@@ -793,15 +1225,14 @@ def notifications_insights():
 
 # Journal analytics endpoints
 @app.route('/api/journal/analytics', methods=['GET', 'OPTIONS'])
-def journal_analytics():
+@require_auth
+def journal_analytics(current_user):
     """Get analytics data for journal entries"""
     if request.method == 'OPTIONS':
         return '', 200
 
-    user_id = request.headers.get('User-ID')
-
-    if not user_id:
-        return jsonify({"error": "User-ID header required"}), 401
+    # Get user ID from JWT token
+    user_id = current_user['user_id']
 
     try:
         # Get user's journal entries from database
@@ -861,7 +1292,7 @@ def generate_ai_insights_for_entry(entry, user_entries):
 
         return insights
     except Exception as e:
-        print(f"Error generating AI insights: {e}")
+        logger.error(f"Error generating AI insights: {e}")
         return None
 
 def analyze_sentiment_trend(entries):
@@ -997,9 +1428,9 @@ def generate_coping_strategies_enhanced(sentiment_trend, mood_pattern, recent_en
             if test_id not in latest_tests:
                 latest_tests[test_id] = result
 
-    print(f"🔍 Latest tests found: {list(latest_tests.keys())}")
+    logger.debug(f"Latest tests found: {list(latest_tests.keys())}")
     for test_id, test in latest_tests.items():
-        print(f"  Test {test_id}: {test.get('test_name', 'Unknown')} - Severity: {test.get('severity_level', 'Unknown')}")
+        logger.debug(f"  Test {test_id}: {test.get('test_name', 'Unknown')} - Severity: {test.get('severity_level', 'Unknown')}")
 
     # PHQ-9 Depression specific strategies
     if 1 in latest_tests:
@@ -1030,10 +1461,10 @@ def generate_coping_strategies_enhanced(sentiment_trend, mood_pattern, recent_en
     if 2 in latest_tests:
         gad7 = latest_tests[2]
         severity = gad7['severity_level']
-        print(f"✅ GAD-7 found with severity: {severity}")
+        logger.debug(f"GAD-7 found with severity: {severity}")
 
         if severity in ['moderate', 'severe']:
-            print(f"✅ Adding anxiety strategies for severity: {severity}")
+            logger.debug(f"Adding anxiety strategies for severity: {severity}")
             strategies.append({
                 "id": "progressive_muscle_relaxation",
                 "name": "Progressive Muscle Relaxation",
@@ -1116,8 +1547,8 @@ def generate_coping_strategies_enhanced(sentiment_trend, mood_pattern, recent_en
     })
 
     # Smart selection: Include at least one strategy from each category
-    print(f"📊 Total strategies before limiting: {len(strategies)}")
-    print(f"📋 All strategy names: {[s['name'] for s in strategies]}")
+    logger.debug(f"Total strategies before limiting: {len(strategies)}")
+    logger.debug(f"All strategy names: {[s['name'] for s in strategies]}")
 
     # Group strategies by category
     by_category = {}
@@ -1145,8 +1576,8 @@ def generate_coping_strategies_enhanced(sentiment_trend, mood_pattern, recent_en
             break
         selected.append(strategy)
 
-    print(f"✂️ Selected {len(selected)} strategies with diverse categories")
-    print(f"📋 Selected strategy names: {[s['name'] for s in selected]}")
+    logger.debug(f"Selected {len(selected)} strategies with diverse categories")
+    logger.debug(f"Selected strategy names: {[s['name'] for s in selected]}")
     return selected
 
 def identify_patterns(entries):
@@ -1338,21 +1769,20 @@ def user_profile_by_id(user_id):
             })
 
     except Exception as e:
-        print(f"Profile error: {e}")
+        logger.error(f"Profile error: {e}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 
 # Dashboard stats endpoint
 @app.route('/api/dashboard/stats', methods=['GET', 'OPTIONS'])
-def dashboard_stats():
+@require_auth
+def dashboard_stats(current_user):
     """Get dashboard statistics including streak"""
     if request.method == 'OPTIONS':
         return '', 200
 
-    user_id = request.headers.get('User-ID')
-
-    if not user_id:
-        return jsonify({"error": "User-ID header required"}), 401
+    # Get user ID from JWT token
+    user_id = current_user['user_id']
 
     try:
         # Get comprehensive stats from database
@@ -1377,155 +1807,156 @@ def dashboard_stats():
 # ============================================
 # PSYCHOLOGICAL TESTS ENDPOINTS
 # ============================================
-
-@app.route('/api/tests', methods=['GET', 'OPTIONS'])
-def get_tests():
-    """Get all available psychological tests"""
-    if request.method == 'OPTIONS':
-        return '', 200
-
-    try:
-        # Get language from request (default to English)
-        language = request.args.get('language', 'en')
-
-        tests = db.get_all_tests()
-
-        # Enhance with additional info and translate
-        for test in tests:
-            test['duration_minutes'] = test['total_questions'] * 0.5  # ~30 seconds per question
-            test = translate_test_data(test, language)
-
-        return jsonify({
-            "success": True,
-            "tests": tests
-        })
-
-    except Exception as e:
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
-
-@app.route('/api/tests/<int:test_id>', methods=['GET', 'OPTIONS'])
-def get_test(test_id):
-    """Get specific test with questions and options"""
-    if request.method == 'OPTIONS':
-        return '', 200
-
-    try:
-        # Get language from request (default to English)
-        language = request.args.get('language', 'en')
-
-        test = db.get_test_with_questions(test_id)
-
-        if not test:
-            return jsonify({"error": "Test not found"}), 404
-
-        # Translate test data, questions, and response options
-        test = translate_test_data(test, language)
-
-        return jsonify({
-            "success": True,
-            "test": test
-        })
-
-    except Exception as e:
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
-
-@app.route('/api/tests/<int:test_id>/submit', methods=['POST', 'OPTIONS'])
-def submit_test(test_id):
-    """Submit test answers and get results"""
-    if request.method == 'OPTIONS':
-        return '', 200
-
-    user_id = request.headers.get('User-ID')
-
-    if not user_id:
-        return jsonify({"error": "User-ID header required"}), 401
-
-    try:
-        data = request.get_json()
-        answers = data.get('answers', [])
-
-        if not answers:
-            return jsonify({"error": "Answers required"}), 400
-
-        # Calculate total score
-        total_score = sum(answer.get('value', 0) for answer in answers)
-
-        # Get test info for max score
-        test_info = db.get_test_with_questions(test_id)
-        if not test_info:
-            return jsonify({"error": "Test not found"}), 404
-
-        # Get interpretation
-        interpretation = db.get_score_interpretation(test_id, total_score)
-
-        if not interpretation:
-            return jsonify({"error": "Could not interpret score"}), 500
-
-        severity_level = interpretation['severity_level']
-
-        # Check for crisis indicators (PHQ-9 Question 9 - suicidal ideation)
-        has_crisis = False
-        crisis_message = None
-
-        # For PHQ-9, question 9 is about self-harm thoughts
-        if test_id == 1:  # PHQ-9
-            question_9 = next((a for a in answers if a.get('question_number') == 9), None)
-            if question_9 and question_9.get('value', 0) > 0:
-                has_crisis = True
-                crisis_message = {
-                    "alert": True,
-                    "title": "Immediate Support Available",
-                    "message": "We noticed you're having thoughts of harming yourself. You're not alone, and help is available.",
-                    "resources": [
-                        {
-                            "name": "988 Suicide & Crisis Lifeline",
-                            "contact": "Call or text 988",
-                            "description": "24/7 free and confidential support"
-                        },
-                        {
-                            "name": "Crisis Text Line",
-                            "contact": "Text HOME to 741741",
-                            "description": "Free crisis counseling via text"
-                        },
-                        {
-                            "name": "International Association for Suicide Prevention",
-                            "contact": "https://www.iasp.info/resources/Crisis_Centres/",
-                            "description": "Find help in your country"
-                        }
-                    ]
-                }
-
-        # Save result
-        result_id = db.save_test_result(
-            user_id=user_id,
-            test_id=test_id,
-            total_score=total_score,
-            severity_level=severity_level,
-            answers=answers,
-            has_crisis=has_crisis
-        )
-
-        # Build response
-        response = {
-            "success": True,
-            "result": {
-                "id": result_id,
-                "total_score": total_score,
-                "max_score": test_info['max_score'],  # Dynamic based on test
-                "severity_level": severity_level,
-                "description": interpretation['description'],
-                "recommendations": interpretation['recommendations']
-            }
-        }
-
-        if has_crisis:
-            response["result"]["crisis"] = crisis_message
-
-        return jsonify(response)
-
-    except Exception as e:
-        print(f"Error submitting test: {e}")
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
+# NOTE: These routes have been migrated to routes/tests.py blueprint
+# Keeping them commented for reference
+#
+# @app.route('/api/tests', methods=['GET', 'OPTIONS'])
+# def get_tests():
+#     """Get all available psychological tests"""
+#     if request.method == 'OPTIONS':
+#         return '', 200
+#
+#     try:
+#         # Get language from request (default to English)
+#         language = request.args.get('language', 'en')
+#
+#         tests = db.get_all_tests()
+#
+#         # Enhance with additional info and translate
+#         for test in tests:
+#             test['duration_minutes'] = test['total_questions'] * 0.5  # ~30 seconds per question
+#             test = translate_test_data(test, language)
+#
+#         return jsonify({
+#             "success": True,
+#             "tests": tests
+#         })
+#
+#     except Exception as e:
+#         return jsonify({"error": f"Server error: {str(e)}"}), 500
+#
+# @app.route('/api/tests/<int:test_id>', methods=['GET', 'OPTIONS'])
+# def get_test(test_id):
+#     """Get specific test with questions and options"""
+#     if request.method == 'OPTIONS':
+#         return '', 200
+#
+#     try:
+#         # Get language from request (default to English)
+#         language = request.args.get('language', 'en')
+#
+#         test = db.get_test_with_questions(test_id)
+#
+#         if not test:
+#             return jsonify({"error": "Test not found"}), 404
+#
+#         # Translate test data, questions, and response options
+#         test = translate_test_data(test, language)
+#
+#         return jsonify({
+#             "success": True,
+#             "test": test
+#         })
+#
+#     except Exception as e:
+#         return jsonify({"error": f"Server error: {str(e)}"}), 500
+#
+# @app.route('/api/tests/<int:test_id>/submit', methods=['POST', 'OPTIONS'])
+# @require_auth
+# def submit_test(current_user, test_id):
+#     """Submit test answers and get results"""
+#     if request.method == 'OPTIONS':
+#         return '', 200
+#
+#     # Get user ID from JWT token
+#     user_id = current_user['user_id']
+#
+#     try:
+#         data = request.get_json()
+#         answers = data.get('answers', [])
+#
+#         if not answers:
+#             return jsonify({"error": "Answers required"}), 400
+#
+#         # Calculate total score
+#         total_score = sum(answer.get('value', 0) for answer in answers)
+#
+#         # Get test info for max score
+#         test_info = db.get_test_with_questions(test_id)
+#         if not test_info:
+#             return jsonify({"error": "Test not found"}), 404
+#
+#         # Get interpretation
+#         interpretation = db.get_score_interpretation(test_id, total_score)
+#
+#         if not interpretation:
+#             return jsonify({"error": "Could not interpret score"}), 500
+#
+#         severity_level = interpretation['severity_level']
+#
+#         # Check for crisis indicators (PHQ-9 Question 9 - suicidal ideation)
+#         has_crisis = False
+#         crisis_message = None
+#
+#         # For PHQ-9, question 9 is about self-harm thoughts
+#         if test_id == 1:  # PHQ-9
+#             question_9 = next((a for a in answers if a.get('question_number') == 9), None)
+#             if question_9 and question_9.get('value', 0) > 0:
+#                 has_crisis = True
+#                 crisis_message = {
+#                     "alert": True,
+#                     "title": "Immediate Support Available",
+#                     "message": "We noticed you're having thoughts of harming yourself. You're not alone, and help is available.",
+#                     "resources": [
+#                         {
+#                             "name": "988 Suicide & Crisis Lifeline",
+#                             "contact": "Call or text 988",
+#                             "description": "24/7 free and confidential support"
+#                         },
+#                         {
+#                             "name": "Crisis Text Line",
+#                             "contact": "Text HOME to 741741",
+#                             "description": "Free crisis counseling via text"
+#                         },
+#                         {
+#                             "name": "International Association for Suicide Prevention",
+#                             "contact": "https://www.iasp.info/resources/Crisis_Centres/",
+#                             "description": "Find help in your country"
+#                         }
+#                     ]
+#                 }
+#
+#         # Save result
+#         result_id = db.save_test_result(
+#             user_id=user_id,
+#             test_id=test_id,
+#             total_score=total_score,
+#             severity_level=severity_level,
+#             answers=answers,
+#             has_crisis=has_crisis
+#         )
+#
+#         # Build response
+#         response = {
+#             "success": True,
+#             "result": {
+#                 "id": result_id,
+#                 "total_score": total_score,
+#                 "max_score": test_info['max_score'],  # Dynamic based on test
+#                 "severity_level": severity_level,
+#                 "description": interpretation['description'],
+#                 "recommendations": interpretation['recommendations']
+#             }
+#         }
+#
+#         if has_crisis:
+#             response["result"]["crisis"] = crisis_message
+#
+#         return jsonify(response)
+#
+#     except Exception as e:
+#         logger.error(f"Error submitting test: {e}")
+#         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/users/<user_id>/test-results', methods=['GET', 'OPTIONS'])
 def get_user_test_results(user_id):
@@ -1609,15 +2040,15 @@ def get_mental_health_insights(user_id):
         })
 
     except Exception as e:
-        print(f"Error in mental health insights: {e}")
+        logger.error(f"Error in mental health insights: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    print("=" * 60)
-    print("REAL SENTIMENT ANALYSIS API - Loading Models...")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("MOODTRACKER API v2.0 - Loading Models...")
+    logger.info("=" * 60)
 
     # Load models on startup
     roberta_loaded = load_roberta_model()
@@ -1626,20 +2057,33 @@ if __name__ == '__main__':
     from simple_model import load_models
     lstm_loaded = load_models()
 
-    if not roberta_loaded and not lstm_loaded:
-        print("[WARNING] No models could be loaded!")
-        print("[WARNING] The API will start but predictions may not work properly.")
+    # Set models in predictions blueprint
+    from routes.predictions import set_models
+    set_models(roberta_model, roberta_tokenizer, lstm_loaded)
+    logger.info("✓ Models configured in predictions blueprint")
 
-    print("\n" + "=" * 60)
-    print("REAL MODEL STATUS:")
-    print("=" * 60)
-    print(f"[MODEL] Fine-tuned RoBERTa: {'LOADED' if roberta_loaded else 'FAILED'}")
-    print(f"[MODEL] MentalBERT-LSTM:   {'LOADED' if lstm_loaded else 'FAILED'}")
-    print("=" * 60)
-    print("[INFO] Starting Real Sentiment Analysis API Server...")
-    print("[URL] http://localhost:5001")
-    print("[HEALTH] http://localhost:5001/api/health")
-    print("[MODE] Using REAL machine learning models (not mock data)")
-    print("=" * 60)
+    if not roberta_loaded and not lstm_loaded:
+        logger.warning("⚠ No models could be loaded!")
+        logger.warning("⚠ The API will start but predictions may not work properly.")
+
+    logger.info("=" * 60)
+    logger.info("MODEL STATUS:")
+    logger.info("=" * 60)
+    logger.info(f"  [MODEL] Fine-tuned RoBERTa:  {'✓ LOADED' if roberta_loaded else '✗ FAILED'}")
+    logger.info(f"  [MODEL] MentalBERT-LSTM:     {'✓ LOADED' if lstm_loaded else '✗ FAILED'}")
+    logger.info("=" * 60)
+    logger.info("API CONFIGURATION:")
+    logger.info("=" * 60)
+    logger.info("  [URL]  http://localhost:5001")
+    logger.info("  [DOCS] http://localhost:5001/api/docs (Swagger UI)")
+    logger.info("  [TEST] http://localhost:5001/api/health")
+    logger.info("=" * 60)
+    logger.info("  Architecture: Modular Blueprints (Phase 3)")
+    logger.info("  Security: Argon2 password hashing")
+    logger.info("  Rate Limiting: Active on all endpoints")
+    logger.info("  Request Logging: Enabled")
+    logger.info("=" * 60)
+    logger.info("Starting MoodTracker API Server...")
+    logger.info("=" * 60)
 
     app.run(debug=False, host='0.0.0.0', port=5001)

@@ -5,9 +5,10 @@ import Hero from "./assets/components/hero";
 import ImportCSV from "./assets/components/importCSV";
 import UseExtension from "./assets/components/useExtension";
 import ImportText from "./assets/components/importText";
+import DualModelAnalysis from "./assets/components/dualModelAnalysis";
 
 function App() {
-  const [ai, setAi] = useState("");
+  const [ai, setAi] = useState("roberta"); // Set default model
   const [selectedMode, setSelectedMode] = useState("");
 
   return (
@@ -28,6 +29,10 @@ function App() {
         <Route
           path="/useExtension"
           element={<UseExtension ai={ai} setAi={setAi} selectedMode="useExtension" setSelectedMode={setSelectedMode}/>}
+        />
+        <Route
+          path="/dualModel"
+          element={<DualModelAnalysis ai={ai} setAi={setAi} selectedMode="dualModel" setSelectedMode={setSelectedMode}/>}
         />
       </Routes>
     </Router>

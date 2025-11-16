@@ -44,9 +44,10 @@ const DragAndDropUpload = forwardRef(({ onFilesSelected, setSelectedFiles }, ref
       }}
       onDragLeave={() => setDragOver(false)}
       sx={{
-        width: 400,
+        width: { xs: '100%', sm: '90%', md: 400 },
+        maxWidth: 400,
         border: `2px dashed ${dragOver ? "#1976d2" : "#ccc"}`,
-        borderRadius: 4,
+        borderRadius: 3,
         color: "white",
         display: "flex",
         flexDirection: "column",
@@ -54,15 +55,15 @@ const DragAndDropUpload = forwardRef(({ onFilesSelected, setSelectedFiles }, ref
         justifyContent: "center",
         textAlign: "center",
         transition: "0.2s ease",
-        p: 3,
-        mt: 4,
+        p: { xs: 2, sm: 2.5, md: 3 },
+        mt: { xs: 2, sm: 3 },
       }}
     >
-      <CloudUploadIcon fontSize="large" color={dragOver ? "primary" : "inherit"} />
-      <Typography variant="body1" sx={{ mb: 1 }}>
+      <CloudUploadIcon sx={{ fontSize: { xs: 36, sm: 40, md: 48 } }} color={dragOver ? "primary" : "inherit"} />
+      <Typography variant="body2" sx={{ mb: 1, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
         Drag and drop CSV or Excel files here or
       </Typography>
-      <Button variant="contained" component="label">
+      <Button variant="contained" component="label" size="small">
         Browse Files
         <input
           type="file"

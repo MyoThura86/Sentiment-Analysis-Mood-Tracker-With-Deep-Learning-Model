@@ -1,0 +1,135 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # Redis Cache & Session Store
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: moodtracker-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - moodtracker-network
+    restart: unless-stopped
+
+  # ============================================
+  # API Backend
+  # ============================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: moodtracker-api
+    ports:
+      - "5001:5001"
+    environment:
+      # Flask Configuration
+      - FLASK_ENV=development
+      - FLASK_APP=api.app
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+
+      # Database
+      - DATABASE_PATH=/app/data/moodtracker.db
+      - USERS_DATABASE_PATH=/app/data/users_database.json
+
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - RATE_LIMIT_STORAGE=redis://redis:6379/1
+
+      # JWT
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-jwt-secret-change-in-production}
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION_HOURS=24
+
+      # OAuth (set these in .env file)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+
+      # API Configuration
+      - API_HOST=0.0.0.0
+      - API_PORT=5001
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+
+      # Logging
+      - LOG_LEVEL=INFO
+
+    volumes:
+      # Mount code for development (hot reload)
+      - ./api:/app/api
+      - ./simple_model.py:/app/simple_model.py
+      - ./database.py:/app/database.py
+      - ./user_manager.py:/app/user_manager.py
+      - ./jwt_utils.py:/app/jwt_utils.py
+      - ./translations.py:/app/translations.py
+
+      # Persistent data
+      - api_data:/app/data
+      - api_logs:/app/logs
+
+      # ML Models (mount from host to avoid copying large files)
+      - ./Fine_tuned_RoBERTa:/app/Fine_tuned_RoBERTa
+      - ./mentalbert_sentiment_model:/app/mentalbert_sentiment_model
+
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - moodtracker-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================
+  # Frontend (Optional - if running frontend in Docker)
+  # ============================================
+  # frontend:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.frontend
+  #   container_name: moodtracker-frontend
+  #   ports:
+  #     - "5173:5173"
+  #   environment:
+  #     - VITE_API_URL=http://localhost:5001/api
+  #   volumes:
+  #     - ./src:/app/src
+  #     - ./public:/app/public
+  #     - ./index.html:/app/index.html
+  #     - ./vite.config.js:/app/vite.config.js
+  #   depends_on:
+  #     - api
+  #   networks:
+  #     - moodtracker-network
+  #   restart: unless-stopped
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  moodtracker-network:
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  redis_data:
+    driver: local
+  api_data:
+    driver: local
+  api_logs:
+    driver: local

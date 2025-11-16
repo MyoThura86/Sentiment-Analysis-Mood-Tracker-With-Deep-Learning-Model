@@ -11,23 +11,33 @@ function SentimentCard({ sentiment, text }) {
   // Default color if sentiment is unknown
   const color = sentimentColors[sentiment] || "white";
 
+  // Add emoji for sentiment
+  const getEmoji = (sentiment) => {
+    switch(sentiment) {
+      case "Positive": return "😊";
+      case "Negative": return "😞";
+      case "Neutral": return "😐";
+      default: return "🤔";
+    }
+  };
+
   return (
     <Box
       sx={{
         height: "auto",
-        width: "460px",
-        padding: "30px",
+        width: { xs: "100%", sm: "90%", md: "460px" },
+        maxWidth: "460px",
+        padding: { xs: "20px", sm: "25px", md: "30px" },
         border: "2px solid white",
         borderRadius: "30px",
       }}
     >
-      <div style={{ display: "flex" }}>
+      <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1 }}>
         <Typography
           sx={{
-            marginRight: "10px",
             fontFamily: "Roboto",
             fontWeight: "regular",
-            fontSize: "20px",
+            fontSize: { xs: "16px", sm: "18px", md: "20px" },
           }}
         >
           Sentiment Analysis:
@@ -37,13 +47,13 @@ function SentimentCard({ sentiment, text }) {
             color: color,
             fontFamily: "Roboto",
             fontWeight: "bolder",
-            fontSize: "20px",
+            fontSize: { xs: "16px", sm: "18px", md: "20px" },
           }}
         >
-          {sentiment}
+          {getEmoji(sentiment)} {sentiment}
         </Typography>
-      </div>
-      <Typography sx={{ marginTop: "30px" }}>{text}</Typography>
+      </Box>
+      <Typography sx={{ mt: { xs: 2, md: 4 }, fontSize: { xs: "14px", sm: "16px" } }}>{text}</Typography>
     </Box>
   );
 }

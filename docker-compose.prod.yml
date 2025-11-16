@@ -1,0 +1,96 @@
+version: '3.8'
+
+# Production Docker Compose Configuration
+# Use with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  # ============================================
+  # Redis - Production Configuration
+  # ============================================
+  redis:
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ============================================
+  # API - Production Configuration
+  # ============================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    environment:
+      # Production settings
+      - FLASK_ENV=production
+      - DEBUG=False
+
+      # Redis with password
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - RATE_LIMIT_STORAGE=redis://:${REDIS_PASSWORD}@redis:6379/1
+
+      # Security
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+
+      # OAuth (production credentials)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+
+      # Production URL
+      - FRONTEND_URL=${FRONTEND_URL}
+
+      # Logging
+      - LOG_LEVEL=WARNING
+
+      # Sentry (if configured)
+      - SENTRY_DSN=${SENTRY_DSN:-}
+
+    volumes:
+      # In production, don't mount source code
+      # Only mount data and models
+      - api_data:/app/data
+      - api_logs:/app/logs
+      - ./Fine_tuned_RoBERTa:/app/Fine_tuned_RoBERTa:ro
+      - ./mentalbert_sentiment_model:/app/mentalbert_sentiment_model:ro
+
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+    # Production health check (more aggressive)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+# Production volumes with specific drivers
+volumes:
+  redis_data:
+    driver: local
+  api_data:
+    driver: local
+  api_logs:
+    driver: local

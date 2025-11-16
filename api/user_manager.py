@@ -4,6 +4,8 @@ import secrets
 import uuid
 from datetime import datetime
 import os
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, InvalidHash
 
 class UserManager:
     def __init__(self, db_path=None):
@@ -12,6 +14,14 @@ class UserManager:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             db_path = os.path.join(current_dir, "users_database.json")
         self.db_path = db_path
+        # Initialize Argon2 password hasher with secure defaults
+        self.ph = PasswordHasher(
+            time_cost=3,        # Number of iterations
+            memory_cost=65536,  # Memory usage in KiB (64 MB)
+            parallelism=4,      # Number of parallel threads
+            hash_len=32,        # Length of hash in bytes
+            salt_len=16         # Length of salt in bytes
+        )
 
     def load_users(self):
         """Load users from JSON file"""
@@ -35,17 +45,58 @@ class UserManager:
             return False
 
     def hash_password(self, password):
-        """Hash password with salt"""
-        salt = secrets.token_hex(32)
-        pwd_hash = hashlib.sha256((password + salt).encode()).hexdigest()
-        return f"{pwd_hash}:{salt}"
+        """
+        Hash password using Argon2id algorithm
+
+        Argon2 is the winner of the Password Hashing Competition and is
+        recommended by OWASP for password storage. It provides protection
+        against GPU attacks, side-channel attacks, and time-memory trade-offs.
+
+        Args:
+            password (str): Plain text password to hash
+
+        Returns:
+            str: Argon2 hash string
+        """
+        return self.ph.hash(password)
 
     def verify_password(self, password, stored_hash):
-        """Verify password against stored hash"""
+        """
+        Verify password against stored hash
+
+        Supports both Argon2 (new) and SHA256 (legacy) for backward compatibility.
+        If a legacy SHA256 hash is verified successfully, it will be automatically
+        upgraded to Argon2 on next save.
+
+        Args:
+            password (str): Plain text password to verify
+            stored_hash (str): Stored hash to verify against
+
+        Returns:
+            bool: True if password matches, False otherwise
+        """
         try:
-            pwd_hash, salt = stored_hash.split(':')
-            return pwd_hash == hashlib.sha256((password + salt).encode()).hexdigest()
-        except:
+            # Try Argon2 verification first (new format)
+            self.ph.verify(stored_hash, password)
+
+            # Check if hash needs rehashing (e.g., parameters changed)
+            if self.ph.check_needs_rehash(stored_hash):
+                # Return True but signal that rehash is needed
+                # This will be handled in authenticate_user
+                return True
+
+            return True
+
+        except (VerifyMismatchError, InvalidHash):
+            # If Argon2 fails, try legacy SHA256 format (backward compatibility)
+            try:
+                if ':' in stored_hash:
+                    pwd_hash, salt = stored_hash.split(':')
+                    return pwd_hash == hashlib.sha256((password + salt).encode()).hexdigest()
+                return False
+            except Exception:
+                return False
+        except Exception:
             return False
 
     def create_user(self, email, password, first_name, last_name):
@@ -84,15 +135,33 @@ class UserManager:
             return {"success": False, "error": "Failed to save user"}
 
     def authenticate_user(self, email, password):
-        """Authenticate user with email and password"""
+        """
+        Authenticate user with email and password
+
+        Automatically upgrades legacy SHA256 hashes to Argon2 on successful login.
+        """
         users = self.load_users()
 
         if email not in users:
             return {"success": False, "error": "User not found"}
 
         user = users[email]
+        stored_hash = user['password_hash']
 
-        if self.verify_password(password, user['password_hash']):
+        if self.verify_password(password, stored_hash):
+            # Check if we need to upgrade from SHA256 to Argon2
+            needs_upgrade = False
+            if ':' in stored_hash:
+                # Legacy SHA256 format detected
+                needs_upgrade = True
+            elif self.ph.check_needs_rehash(stored_hash):
+                # Argon2 parameters have changed
+                needs_upgrade = True
+
+            # Upgrade password hash if needed
+            if needs_upgrade:
+                user['password_hash'] = self.hash_password(password)
+
             # Update last login
             user['last_login'] = datetime.now().isoformat()
             users[email] = user

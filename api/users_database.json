@@ -18,9 +18,9 @@
     "email": "myowithmom@gmail.com",
     "firstName": "Myo",
     "lastName": "Thura",
-    "password_hash": "a1066a1426124a650528c87ef1085a6cd98116bb3ba2155c47d6b5f593f8e35e:efd017441d360d8f6132b92973a7ff28bcc6ef7666b9194b405f9a57e2501228",
+    "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$Y074ijy6FaplmZVxHtH3ng$lMo+jglpcEm1gKp3JHrqXrz3Wd8cPvPP7JeLaFoRSCw",
     "created_at": "2025-09-17T23:34:10.926619",
-    "last_login": "2025-10-04T10:58:52.447226",
+    "last_login": "2025-11-17T00:23:05.083073",
     "profile": {
       "avatar": "https://ui-avatars.com/api/?name=Myo+Thura&background=667eea&color=fff&size=128&rounded=true",
       "bio": "",
@@ -60,11 +60,25 @@
     "email": "256qpe@gmail.com",
     "firstName": "May",
     "lastName": "Lay",
-    "password_hash": "5cc087a56b64a1ccfb8eca086485ff8c847d10f9f4c6c378ce2108f6d3f265f1:ff04db61fd60329b80df94400f141566ee1f1ffa8b6ced880c129c3992b3081b",
+    "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$9IXKfC2cRPQY237qfjklGA$WkvGgwzif0qaXhiHkLn3DA3sQWiUABHt2Mut9xDJg4k",
     "created_at": "2025-09-28T00:57:11.272855",
-    "last_login": "2025-10-03T22:28:17.724263",
+    "last_login": "2025-11-17T00:12:20.376171",
     "profile": {
       "avatar": "https://ui-avatars.com/api/?name=May+Lay&background=667eea&color=fff&size=128&rounded=true",
+      "bio": "",
+      "preferences": {}
+    }
+  },
+  "djmin@gmail.com": {
+    "id": "f6c1157faef3434199eef7a68809436e",
+    "email": "djmin@gmail.com",
+    "firstName": "dj",
+    "lastName": "minlu",
+    "password_hash": "dd467096bfa6f685913d532bc599ef70a72e18c9ce07fff1d3757585967ad9bd:0b5edad538df449aff64192ccd2796f41dff400f3a0270b60d6d6bf8d012ee78",
+    "created_at": "2025-10-29T01:24:45.397337",
+    "last_login": "2025-10-29T01:24:45.397337",
+    "profile": {
+      "avatar": "https://ui-avatars.com/api/?name=dj+minlu&background=667eea&color=fff&size=128&rounded=true",
       "bio": "",
       "preferences": {}
     }

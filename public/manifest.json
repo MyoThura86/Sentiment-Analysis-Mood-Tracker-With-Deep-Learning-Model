@@ -1,0 +1,26 @@
+{
+  "name": "MoodTracker - AI Sentiment Analysis",
+  "short_name": "MoodTracker",
+  "description": "AI-powered mental health sentiment analysis with RoBERTa and MentalBERT-LSTM models",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#667eea",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "16x16 32x32",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["health", "medical", "productivity", "lifestyle"],
+  "lang": "en",
+  "dir": "ltr"
+}

@@ -6,7 +6,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Button
+  Button,
+  Box
 } from "@mui/material";
 import DescriptionIcon from "@mui/icons-material/Description";
 import EditNote from "@mui/icons-material/EditNote";
@@ -27,24 +28,26 @@ function Header({ ai, setAi, selectedMode, setSelectedMode }) {
     }
   };
 
-  
+
   const getButtonStyle = (mode) => ({
     backgroundColor: selectedMode === mode ? "#3B3A49" : "",
     height: "42px",
     width: "42px",
+    minWidth: "42px",
     color: "white",
-    
-    
+
+
     borderRadius: "10px"
   });
 
   return (
-    <div style={{
-      width: "495px",
+    <Box sx={{
+      width: { xs: "100%", sm: "90%", md: "495px" },
+      maxWidth: "495px",
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
-      borderBottom:selectedMode=="importText" ? "0px":"1px solid white"
+      borderBottom: selectedMode=="importText" ? "0px":"1px solid white"
     }}>
       <FormControl
         variant="standard"
@@ -75,7 +78,7 @@ function Header({ ai, setAi, selectedMode, setSelectedMode }) {
         </Select>
       </FormControl>
 
-      <div style={{  display: "flex", flexDirection: "row", gap: "2px" }}>
+      <Box sx={{  display: "flex", flexDirection: "row", gap: "2px" }}>
         <Button
           onClick={() => {
             setSelectedMode("importText");
@@ -96,7 +99,7 @@ function Header({ ai, setAi, selectedMode, setSelectedMode }) {
           <EditNote />
         </Button>
 
-        <Button 
+        <Button
           onClick={() => {
             setSelectedMode("useExtension");
             navigate("/useExtension");
@@ -105,8 +108,8 @@ function Header({ ai, setAi, selectedMode, setSelectedMode }) {
         >
           <Extension />
         </Button>
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }
 

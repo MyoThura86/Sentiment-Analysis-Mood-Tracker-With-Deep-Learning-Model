@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>API Test</h1>
+    <button onclick="testLogin()">Test Login</button>
+    <button onclick="testRegister()">Test Register</button>
+    <div id="result"></div>
+
+    <script>
+        async function testLogin() {
+            try {
+                const response = await fetch('http://localhost:5001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'test@test.com',
+                        password: 'test123'
+                    }),
+                });
+
+                const result = await response.json();
+                document.getElementById('result').innerHTML = 'Login: ' + JSON.stringify(result, null, 2);
+                console.log('Login result:', result);
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Login Error: ' + error.message;
+                console.error('Login error:', error);
+            }
+        }
+
+        async function testRegister() {
+            try {
+                const response = await fetch('http://localhost:5001/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'newuser@test.com',
+                        password: 'test123',
+                        firstName: 'New',
+                        lastName: 'User'
+                    }),
+                });
+
+                const result = await response.json();
+                document.getElementById('result').innerHTML = 'Register: ' + JSON.stringify(result, null, 2);
+                console.log('Register result:', result);
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Register Error: ' + error.message;
+                console.error('Register error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

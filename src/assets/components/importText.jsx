@@ -5,6 +5,7 @@ import ArrowForward from "@mui/icons-material/ArrowForward";
 import SentimentCard from "./sentimentCard";
 import { sendMessage as sendMessageApi } from "../api/importTextApi";
 import LinearProgress from '@mui/material/LinearProgress';
+import { Box } from '@mui/material';
 
 
 function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
@@ -25,13 +26,35 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
   
     try {
       const result = await sendMessageApi(text);
+      console.log("API result:", result); // Debug log
+
+      // Our API returns both models, let's use the selected AI model
+      let sentiment;
+      if (ai === "roberta" && result.roberta) {
+        sentiment = result.roberta.sentiment;
+      } else if (ai === "lstm" && result.lstm) {
+        sentiment = result.lstm.sentiment;
+      } else if (result.roberta) {
+        // Default to RoBERTa if no specific model selected
+        sentiment = result.roberta.sentiment;
+      } else {
+        sentiment = "Unknown";
+      }
+
       dataRef.current = {
         text,
-        sentiment: result.sentiment_lvl,
+        sentiment: sentiment,
       };
+      console.log("Setting dataRef:", dataRef.current); // Debug log
       forceRender();
     } catch (error) {
       console.error("Error in handleSend:", error);
+      // Show error to user
+      dataRef.current = {
+        text,
+        sentiment: "Error - Please try again",
+      };
+      forceRender();
     } finally {
       setLoading(false); // Stop loading
     }
@@ -48,8 +71,15 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
   const { text, sentiment } = dataRef.current;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", flexDirection: "column", width: "510px" }}>
-      <div style={{ display: "flex", alignItems: "center", flexDirection: "column", marginBottom: "30px" }}>
+    <Box sx={{
+      display: "flex",
+      alignItems: "center",
+      flexDirection: "column",
+      width: { xs: "100%", sm: "90%", md: "510px" },
+      maxWidth: "510px",
+      px: { xs: 2, sm: 0 }
+    }}>
+      <Box sx={{ display: "flex", alignItems: "center", flexDirection: "column", mb: 4, width: "100%" }}>
         <Header
           ai={ai}
           setAi={setAi}
@@ -57,14 +87,14 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
           setSelectedMode={setSelectedMode}
         />
 
-        <div
-          style={{
-            width: "510px",
+        <Box
+          sx={{
+            width: "100%",
             display: "flex",
             backgroundColor: "#5A5067",
             borderRadius: "30px",
-            padding: "10px",
-            justifyContent: "space-evenly",
+            p: { xs: "8px", sm: "10px" },
+            justifyContent: "space-between",
             alignItems: "center",
           }}
         >
@@ -77,7 +107,8 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
             minRows={1}
             placeholder="Enter your text"
             style={{
-              width: "400px",
+              width: "100%",
+              maxWidth: "400px",
               border: "none",
               backgroundColor: "transparent",
               color: "white",
@@ -90,7 +121,7 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
 
           <button
             onClick={handleSend}
-            isabled={loading}
+            disabled={loading}
             style={{
               marginLeft: "1rem",
               backgroundColor: "transparent",
@@ -101,17 +132,18 @@ function ImportText({ ai, setAi, selectedMode, setSelectedMode }) {
               border: "none",
               cursor: "pointer",
               outline: "none",
+              flexShrink: 0
             }}
           >
             <ArrowForward />
           </button>
-        </div>
-      </div>
-      {loading && (<LinearProgress sx={{ width: "100%", maxWidth: "510px", mt: 2 }} />)}
+        </Box>
+      </Box>
+      {loading && (<LinearProgress sx={{ width: "100%", mt: 2 }} />)}
 
 
       {sentiment && <SentimentCard sentiment={sentiment} text={text} />}
-    </div>
+    </Box>
   );
 }
 

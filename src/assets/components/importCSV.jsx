@@ -43,35 +43,46 @@ function ImportCSV({ ai, setAi, selectedMode, setSelectedMode }) {
       console.log("📥 Backend Response:", res);
 
       setDownloadData(res);
-       // Store sentiment counts from response for chart usage
-      setChartData({
-        Positive: res.Positive || 0,
-        Neutral: res.Neutral || 0,
-        Negative: res.Negative || 0,
-      });
+
+      // Calculate sentiment counts from the results array
+      if (res.results && Array.isArray(res.results)) {
+        const sentimentCounts = { Positive: 0, Neutral: 0, Negative: 0 };
+        res.results.forEach(result => {
+          if (result.sentiment) {
+            sentimentCounts[result.sentiment] = (sentimentCounts[result.sentiment] || 0) + 1;
+          }
+        });
+        setChartData(sentimentCounts);
+      }
 
     } catch (err) {
       console.error("🚫 Upload failed:", err);
+      alert(`Upload failed: ${err.message}`);
     }finally {
       setLoading(false); // Stop loading regardless of success/failure
     }
   };
 
   const triggerDownload = () => {
-  if (!downloadData) return;
+    if (!downloadData || !downloadData.results) return;
 
-  const blob = new Blob(
-    [atob(downloadData.download.base64)],
-    { type: "text/csv" }
-  );
+    // Create CSV content from results
+    const csvHeader = "Row,Text,Sentiment,Confidence,RoBERTa_Sentiment,RoBERTa_Confidence,LSTM_Sentiment,LSTM_Confidence,Agreement\n";
+    const csvRows = downloadData.results.map(result => {
+      const text = (result.text || "").replace(/"/g, '""'); // Escape quotes
+      return `${result.row},"${text}",${result.sentiment},${result.confidence},${result.roberta?.sentiment || ''},${result.roberta?.confidence || ''},${result.lstm?.sentiment || ''},${result.lstm?.confidence || ''},${result.agreement}`;
+    }).join('\n');
 
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = downloadData.download.filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
+    const csvContent = csvHeader + csvRows;
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `sentiment_analysis_results_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div style={{ padding: 30, display: "flex", flexDirection: "column", alignItems: "center", color: "white" }}>
@@ -108,22 +119,42 @@ function ImportCSV({ ai, setAi, selectedMode, setSelectedMode }) {
                 Download Output CSV
               </Button>
 
-              <Box sx={{ display:"flex",flexDirection:"column",mt:4,gap:"100px" }}>
-                <h3>Data From the Predicted Sentiment</h3>
+              <Box sx={{ mt: 4 }}>
+                <Typography variant="h5" sx={{ color: "white", textAlign: "center", mb: 4, fontWeight: "bold" }}>
+                  Data From the Predicted Sentiment
+                </Typography>
+
+                <Box sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+                  gap: 4,
+                  alignItems: "center",
+                  justifyItems: "center",
+                  maxWidth: "1000px",
+                  margin: "0 auto"
+                }}>
+                  <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    <Typography variant="h6" sx={{ color: "white", mb: 2, textAlign: "center" }}>
+                      Sentiment Distribution
+                    </Typography>
                     <PieChart
                       series={[{ data: pieData, arcLabel: (item) => item.label }]}
                       sx={{
                         [`& .${pieArcLabelClasses.root}`]: {
                           fill: "white",
-                          
                           fontWeight: "bold",
                         },
-                        "& .MuiChartsLabel-root":{color:"white"}
+                        "& .MuiChartsLabel-root": { color: "white" }
                       }}
-                      width={300}
-                      height={300}
+                      width={350}
+                      height={350}
                     />
-                    
+                  </Box>
+
+                  <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    <Typography variant="h6" sx={{ color: "white", mb: 2, textAlign: "center" }}>
+                      Sentiment Count
+                    </Typography>
                     <BarChart
                       xAxis={[
                         {
@@ -150,19 +181,18 @@ function ImportCSV({ ai, setAi, selectedMode, setSelectedMode }) {
                           ],
                         }
                       ]}
-                      height={300}
+                      width={350}
+                      height={350}
                       barLabel="value"
                       sx={{
-                        
                         "& .MuiChartsAxis-line": { stroke: "white"},
                         "& .MuiChartsLegend-root": { color: "white" },
-
                         "& .MuiBarElement-root text": { fill: "white" },
                         "& .MuiChartsAxis-tickLabel": { fill: "white" },
                       }}
                     />
-
-
+                  </Box>
+                </Box>
               </Box>
               
             </Box>

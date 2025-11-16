@@ -1,24 +1,118 @@
-# Logs
-logs
-*.log
+# Dependencies
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+.npm
+.yarn-integrity
 
-node_modules
-dist
-dist-ssr
+# Build outputs
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 *.local
+api/.env
+api/.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# AI Models (large files - should be downloaded separately)
+*.keras
+*.h5
+*.pkl
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.pb
+Fine_tuned_RoBERTa/
+mentalbert_sentiment_model/
+Model.py
+models/
+*.model
+*.weights
+
+# Test data (keep structure but not actual data)
+test_data.csv
+sample_data.csv
+
+# User data files (sensitive)
+api/users.json
+api/users_database.json
+users_database.json
+api/journal_entries.json
+journal_entries.json
+*.db
+*.sqlite
+*.sqlite3
+api/mood_tracking.db
+
+# Logs
+logs/
+*.log
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Temporary files
+*.tmp
+*.temp
+*.backup
+nul
+*.nul
+
+# API Keys and Secrets
+*_secrets.json
+secrets.json
+credentials.json
+oauth_credentials.json
+*.pem
+*.key
+*.cert
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock

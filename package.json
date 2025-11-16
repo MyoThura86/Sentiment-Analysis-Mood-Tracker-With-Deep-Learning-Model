@@ -1,8 +1,28 @@
 {
-  "name": "special-project-g",
+  "name": "moodtracker-ai",
+  "description": "AI-Powered Mental Health Sentiment Analysis Platform with Interactive Journaling and Therapeutic Coping Strategies",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
+  "keywords": [
+    "mental-health",
+    "ai",
+    "sentiment-analysis",
+    "journaling",
+    "therapy",
+    "react",
+    "flask"
+  ],
+  "author": "MoodTracker Development Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/moodtracker-ai.git"
+  },
+  "homepage": "https://github.com/yourusername/moodtracker-ai#readme",
+  "bugs": {
+    "url": "https://github.com/yourusername/moodtracker-ai/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,13 +32,20 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
+    "@google-cloud/local-auth": "^3.0.1",
     "@mui/icons-material": "^7.1.0",
     "@mui/material": "^7.1.0",
     "@mui/x-charts": "^8.3.1",
+    "@react-oauth/google": "^0.12.2",
     "axios": "^1.9.0",
+    "chart.js": "^4.5.0",
+    "google-auth-library": "^10.3.0",
     "react": "^19.1.0",
+    "react-chartjs-2": "^5.3.0",
     "react-dom": "^19.1.0",
-    "react-router-dom": "^7.6.0"
+    "react-google-button": "^0.8.0",
+    "react-router-dom": "^7.6.0",
+    "recharts": "^2.8.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
